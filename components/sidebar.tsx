@@ -2,8 +2,10 @@
 
 import Link from 'next/link'
 import Image from 'next/image'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
+import { useState } from 'react'
 import type { ReactNode } from 'react'
+import { createClient } from '@/lib/supabase/client'
 
 type ItemMenu = {
   href: string
@@ -59,25 +61,56 @@ const MENU_INFERIOR: ItemMenu[] = [
 
 export default function Sidebar() {
   const pathname = usePathname()
+  const router = useRouter()
+  const [cerrandoSesion, setCerrandoSesion] = useState(false)
 
-  function estaActivo(
-    href: string
-  ) {
+  function estaActivo(href: string) {
     if (href === '/') {
       return pathname === '/'
     }
 
     return (
       pathname === href ||
-      pathname.startsWith(
-        `${href}/`
-      )
+      pathname.startsWith(`${href}/`)
     )
+  }
+
+  async function cerrarSesion() {
+    if (cerrandoSesion) return
+
+    setCerrandoSesion(true)
+
+    try {
+      const supabase = createClient()
+
+      const { error } = await supabase.auth.signOut()
+
+      if (error) {
+        console.error(
+          'Error al cerrar sesión:',
+          error.message
+        )
+        return
+      }
+
+      router.replace('/login')
+      router.refresh()
+    } catch (error) {
+      console.error(
+        'Error inesperado al cerrar sesión:',
+        error
+      )
+    } finally {
+      setCerrandoSesion(false)
+    }
   }
 
   return (
     <aside className="fixed inset-y-0 left-0 z-40 hidden w-[240px] border-r border-zinc-200 bg-white lg:flex lg:flex-col">
       <div className="flex h-full flex-col">
+
+        {/* LOGO */}
+
         <div className="border-b border-zinc-100 px-4 py-4">
           <Link
             href="/"
@@ -95,25 +128,25 @@ export default function Sidebar() {
           </Link>
         </div>
 
+        {/* MENÚ PRINCIPAL */}
+
         <nav className="flex-1 overflow-y-auto px-3 py-4">
           <p className="mb-2 px-3 text-[9px] font-bold uppercase tracking-[0.12em] text-zinc-400">
             Gestión
           </p>
 
           <div className="space-y-1">
-            {MENU_PRINCIPAL.map(
-              (item) => (
-                <LinkMenu
-                  key={item.href}
-                  item={item}
-                  activo={estaActivo(
-                    item.href
-                  )}
-                />
-              )
-            )}
+            {MENU_PRINCIPAL.map((item) => (
+              <LinkMenu
+                key={item.href}
+                item={item}
+                activo={estaActivo(item.href)}
+              />
+            ))}
           </div>
         </nav>
+
+        {/* MENÚ INFERIOR */}
 
         <div className="border-t border-zinc-100 px-3 py-4">
           <p className="mb-2 px-3 text-[9px] font-bold uppercase tracking-[0.12em] text-zinc-400">
@@ -121,17 +154,32 @@ export default function Sidebar() {
           </p>
 
           <div className="space-y-1">
-            {MENU_INFERIOR.map(
-              (item) => (
-                <LinkMenu
-                  key={item.href}
-                  item={item}
-                  activo={estaActivo(
-                    item.href
-                  )}
-                />
-              )
-            )}
+            {MENU_INFERIOR.map((item) => (
+              <LinkMenu
+                key={item.href}
+                item={item}
+                activo={estaActivo(item.href)}
+              />
+            ))}
+
+            {/* CERRAR SESIÓN */}
+
+            <button
+              type="button"
+              onClick={cerrarSesion}
+              disabled={cerrandoSesion}
+              className="group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-zinc-500 transition hover:bg-red-50 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-zinc-400 transition group-hover:bg-white group-hover:text-red-600 group-hover:shadow-sm">
+                <IconoSalir />
+              </span>
+
+              <span className="truncate">
+                {cerrandoSesion
+                  ? 'Cerrando sesión...'
+                  : 'Cerrar sesión'}
+              </span>
+            </button>
           </div>
         </div>
       </div>
@@ -275,6 +323,16 @@ function IconoConfiguracion() {
     <IconBase>
       <circle cx="12" cy="12" r="3" />
       <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.6-1H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3 1.7 1.7 0 0 0 1-1.6v-.2h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z" />
+    </IconBase>
+  )
+}
+
+function IconoSalir() {
+  return (
+    <IconBase>
+      <path d="M10 17l5-5-5-5" />
+      <path d="M15 12H3" />
+      <path d="M13 3h6a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-6" />
     </IconBase>
   )
 }
