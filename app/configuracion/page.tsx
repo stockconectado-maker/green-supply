@@ -1,4 +1,3 @@
-
 import Link from 'next/link'
 import type { ReactNode } from 'react'
 
@@ -40,6 +39,14 @@ export default function ConfiguracionPage() {
             icono={<IconoCuotas />}
             titulo="Cuotas"
             descripcion="Importes y configuración de cuotas sociales."
+            disponible
+          />
+
+          <Tarjeta
+            href="/configuracion/costos-base"
+            icono={<IconoCostos />}
+            titulo="Costos base"
+            descripcion="Valor del kWh, nutrientes y referencias para calcular costos."
             disponible
           />
 
@@ -94,7 +101,9 @@ function Tarjeta({
         </div>
 
         {disponible ? (
-          <span className="text-zinc-400">↗</span>
+          <span className="text-zinc-400">
+            ↗
+          </span>
         ) : (
           <span className="rounded-full bg-zinc-100 px-2 py-1 text-[10px] font-semibold text-zinc-500">
             Próximamente
@@ -134,11 +143,21 @@ function Tarjeta({
 }
 
 function IconoSeguridad() {
-  return <Icono ruta="M6 10V7a6 6 0 0 1 12 0v3M5 10h14v11H5z" />
+  return (
+    <Icono ruta="M6 10V7a6 6 0 0 1 12 0v3M5 10h14v11H5z" />
+  )
 }
 
 function IconoCuotas() {
-  return <Icono ruta="M12 3v18M16 7H10a3 3 0 0 0 0 6h4a3 3 0 0 1 0 6H7" />
+  return (
+    <Icono ruta="M12 3v18M16 7H10a3 3 0 0 0 0 6h4a3 3 0 0 1 0 6H7" />
+  )
+}
+
+function IconoCostos() {
+  return (
+    <Icono ruta="M4 19h16M6 16V9M12 16V5M18 16v-4M5 5h2M11 3h2M17 8h2" />
+  )
 }
 
 function IconoUsuarios() {
@@ -150,7 +169,9 @@ function IconoUsuarios() {
 }
 
 function IconoAsociacion() {
-  return <Icono ruta="M4 21h16M6 21V9h12v12M3 9l9-6 9 6M9 13h6M9 17h6" />
+  return (
+    <Icono ruta="M4 21h16M6 21V9h12v12M3 9l9-6 9 6M9 13h6M9 17h6" />
+  )
 }
 
 function IconoAjustes() {
@@ -161,7 +182,11 @@ function IconoAjustes() {
   )
 }
 
-function Icono({ ruta }: { ruta: string }) {
+function Icono({
+  ruta,
+}: {
+  ruta: string
+}) {
   return (
     <svg
       width="20"
