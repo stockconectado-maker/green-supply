@@ -1,12 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import {
-  ReactNode,
-  useEffect,
-  useMemo,
-  useState,
-} from 'react'
+import { ReactNode, useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
 type Asociado = {
@@ -47,32 +42,41 @@ type Dispensa = {
   medio_pago: string | null
 }
 
-type ResultadoDispensa = {
-  dispensa_id: number
-  asociado_id: number
-  asociado: string
+type ItemDispensa = {
   genetica_id: number
   genetica: string
-  cantidad_g: number
+  stock_disponible_g: number
+  lotes_disponibles: number
+  cantidad: string
+}
+
+type ResultadoDispensaMultiple = {
+  asociado_id: number
+  asociado: string
+  cantidad_geneticas: number
+  cantidad_total_g: number
   aporte_importe: number
   moneda: 'ARS' | 'USD'
   tipo_cambio_ars_usd: number | null
   aporte_equivalente_ars: number
   medio_pago: string | null
   movimiento_financiero_id: number
-  lotes: Array<{
-    lote_id: number
-    codigo_lote: string
+  dispensa_ids: number[]
+  dispensas: Array<{
+    dispensa_id: number
+    genetica_id: number
+    genetica: string
     cantidad_g: number
-    movimiento_stock_id: number
+    lotes: Array<{
+      lote_id: number
+      codigo_lote: string
+      cantidad_g: number
+      movimiento_stock_id: number
+    }>
   }>
 }
 
-const MEDIOS_APORTE = [
-  'Transferencia',
-  'Efectivo',
-  'Otro',
-]
+const MEDIOS_APORTE = ['Transferencia', 'Efectivo', 'Otro']
 
 export default function DispensaPage() {
   const supabase = useMemo(() => createClient(), [])
@@ -80,60 +84,29 @@ export default function DispensaPage() {
   const [cargando, setCargando] = useState(true)
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState('')
-  const [exito, setExito] =
-    useState<ResultadoDispensa | null>(null)
+  const [exito, setExito] = useState<ResultadoDispensaMultiple | null>(null)
 
-  const [asociados, setAsociados] =
-    useState<Asociado[]>([])
-  const [stock, setStock] =
-    useState<StockGenetica[]>([])
-  const [recientes, setRecientes] =
-    useState<Dispensa[]>([])
-  const [hoy, setHoy] =
-    useState<Dispensa[]>([])
-  const [semana, setSemana] =
-    useState<Dispensa[]>([])
+  const [asociados, setAsociados] = useState<Asociado[]>([])
+  const [stock, setStock] = useState<StockGenetica[]>([])
+  const [recientes, setRecientes] = useState<Dispensa[]>([])
+  const [hoy, setHoy] = useState<Dispensa[]>([])
+  const [semana, setSemana] = useState<Dispensa[]>([])
 
-  const [
-    busquedaAsociado,
-    setBusquedaAsociado,
-  ] = useState('')
-  const [
-    busquedaGenetica,
-    setBusquedaGenetica,
-  ] = useState('')
+  const [busquedaAsociado, setBusquedaAsociado] = useState('')
+  const [busquedaGenetica, setBusquedaGenetica] = useState('')
 
-  const [asociadoId, setAsociadoId] =
-    useState<number | null>(null)
-  const [geneticaId, setGeneticaId] =
-    useState<number | null>(null)
+  const [asociadoId, setAsociadoId] = useState<number | null>(null)
+  const [items, setItems] = useState<ItemDispensa[]>([])
 
-  const [cantidad, setCantidad] =
-    useState('')
-  const [aporte, setAporte] =
-    useState('')
-
-  const [
-    monedaAporte,
-    setMonedaAporte,
-  ] = useState<'ARS' | 'USD'>('ARS')
-
-  const [
-    cotizacionUsd,
-    setCotizacionUsd,
-  ] = useState('')
-
-  const [
-    medioAporte,
-    setMedioAporte,
-  ] = useState('Transferencia')
-  const [
-    observaciones,
-    setObservaciones,
-  ] = useState('')
+  const [aporte, setAporte] = useState('')
+  const [monedaAporte, setMonedaAporte] = useState<'ARS' | 'USD'>('ARS')
+  const [cotizacionUsd, setCotizacionUsd] = useState('')
+  const [medioAporte, setMedioAporte] = useState('Transferencia')
+  const [observaciones, setObservaciones] = useState('')
 
   useEffect(() => {
     cargar()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   async function cargar() {
@@ -141,8 +114,7 @@ export default function DispensaPage() {
     setError('')
 
     const fechaHoy = fechaLocal()
-    const inicioSemana =
-      fechaInicioSemana()
+    const inicioSemana = fechaInicioSemana()
 
     const [
       resultadoAsociados,
@@ -156,29 +128,19 @@ export default function DispensaPage() {
         .select(
           'id, numero_socio, nombre_apellido, dni, estado_asociado, estado_reprocann'
         )
-        .eq(
-          'estado_asociado',
-          'Asociado activo'
-        )
+        .eq('estado_asociado', 'Asociado activo')
         .order('nombre_apellido'),
 
       supabase
-        .from(
-          'vista_stock_geneticas_dispensa'
-        )
+        .from('vista_stock_geneticas_dispensa')
         .select('*')
-        .gt(
-          'stock_disponible_g',
-          0
-        )
+        .gt('stock_disponible_g', 0)
         .order('genetica'),
 
       supabase
         .from('vista_dispensas')
         .select('*')
-        .order('created_at', {
-          ascending: false,
-        })
+        .order('created_at', { ascending: false })
         .limit(12),
 
       supabase
@@ -189,14 +151,8 @@ export default function DispensaPage() {
       supabase
         .from('vista_dispensas')
         .select('*')
-        .gte(
-          'fecha',
-          inicioSemana
-        )
-        .lte(
-          'fecha',
-          fechaHoy
-        ),
+        .gte('fecha', inicioSemana)
+        .lte('fecha', fechaHoy),
     ])
 
     const primerError =
@@ -217,279 +173,229 @@ export default function DispensaPage() {
       return
     }
 
-    setAsociados(
-      (resultadoAsociados.data ??
-        []) as Asociado[]
-    )
-    setStock(
-      (resultadoStock.data ??
-        []) as StockGenetica[]
-    )
-    setRecientes(
-      (resultadoRecientes.data ??
-        []) as Dispensa[]
-    )
-    setHoy(
-      (resultadoHoy.data ??
-        []) as Dispensa[]
-    )
-    setSemana(
-      (resultadoSemana.data ??
-        []) as Dispensa[]
+    const stockActual = (resultadoStock.data ?? []) as StockGenetica[]
+
+    setAsociados((resultadoAsociados.data ?? []) as Asociado[])
+    setStock(stockActual)
+    setRecientes((resultadoRecientes.data ?? []) as Dispensa[])
+    setHoy((resultadoHoy.data ?? []) as Dispensa[])
+    setSemana((resultadoSemana.data ?? []) as Dispensa[])
+
+    setItems((actuales) =>
+      actuales.map((item) => {
+        const actualizado = stockActual.find(
+          (s) => s.genetica_id === item.genetica_id
+        )
+
+        return actualizado
+          ? {
+              ...item,
+              stock_disponible_g: numero(actualizado.stock_disponible_g),
+              lotes_disponibles: actualizado.lotes_disponibles,
+            }
+          : item
+      })
     )
 
     setCargando(false)
   }
 
   const asociadoSeleccionado =
-    asociados.find(
-      (item) =>
-        item.id === asociadoId
-    ) ?? null
+    asociados.find((item) => item.id === asociadoId) ?? null
 
-  const geneticaSeleccionada =
-    stock.find(
-      (item) =>
-        item.genetica_id ===
-        geneticaId
-    ) ?? null
+  const asociadosFiltrados = useMemo(() => {
+    const q = normalizar(busquedaAsociado)
 
-  const asociadosFiltrados =
-    useMemo(() => {
-      const q =
+    if (!q || asociadoSeleccionado) return []
+
+    return asociados
+      .filter((item) =>
         normalizar(
-          busquedaAsociado
-        )
+          [
+            item.numero_socio,
+            item.nombre_apellido,
+            item.dni,
+            item.estado_reprocann,
+          ]
+            .filter(Boolean)
+            .join(' ')
+        ).includes(q)
+      )
+      .slice(0, 7)
+  }, [asociados, busquedaAsociado, asociadoSeleccionado])
 
-      if (
-        !q ||
-        asociadoSeleccionado
-      ) {
-        return []
-      }
+  const geneticasFiltradas = useMemo(() => {
+    const q = normalizar(busquedaGenetica)
 
-      return asociados
-        .filter((item) =>
-          normalizar(
-            [
-              item.numero_socio,
-              item.nombre_apellido,
-              item.dni,
-              item.estado_reprocann,
-            ]
-              .filter(Boolean)
-              .join(' ')
-          ).includes(q)
-        )
-        .slice(0, 7)
-    }, [
-      asociados,
-      busquedaAsociado,
-      asociadoSeleccionado,
-    ])
+    if (!q) return []
 
-  const geneticasFiltradas =
-    useMemo(() => {
-      const q =
-        normalizar(
-          busquedaGenetica
-        )
+    const seleccionadas = new Set(items.map((item) => item.genetica_id))
 
-      if (
-        !q ||
-        geneticaSeleccionada
-      ) {
-        return []
-      }
+    return stock
+      .filter(
+        (item) =>
+          !seleccionadas.has(item.genetica_id) &&
+          normalizar(item.genetica).includes(q)
+      )
+      .slice(0, 8)
+  }, [stock, busquedaGenetica, items])
 
-      return stock
-        .filter((item) =>
-          normalizar(
-            item.genetica
-          ).includes(q)
-        )
-        .slice(0, 7)
-    }, [
-      stock,
-      busquedaGenetica,
-      geneticaSeleccionada,
-    ])
+  const itemsConCantidad = items.map((item) => ({
+    ...item,
+    cantidadNumero: numeroPositivo(item.cantidad),
+  }))
 
-  const cantidadNumero =
-    numeroPositivo(cantidad)
+  const totalGramos = itemsConCantidad.reduce(
+    (total, item) => total + item.cantidadNumero,
+    0
+  )
 
-  const aporteNumero =
-    numeroPositivo(aporte)
+  const hayCantidadInvalida = itemsConCantidad.some(
+    (item) =>
+      item.cantidadNumero <= 0 ||
+      item.cantidadNumero > item.stock_disponible_g
+  )
 
-  const cotizacionUsdNumero =
-    numeroPositivo(
-      cotizacionUsd
-    )
+  const aporteNumero = numeroPositivo(aporte)
+  const cotizacionUsdNumero = numeroPositivo(cotizacionUsd)
 
   const aporteEquivalenteArs =
     monedaAporte === 'USD'
-      ? aporteNumero *
-        cotizacionUsdNumero
+      ? aporteNumero * cotizacionUsdNumero
       : aporteNumero
 
-  const stockDisponible =
-    numero(
-      geneticaSeleccionada
-        ?.stock_disponible_g
-    )
-
-  const stockRestante =
-    geneticaSeleccionada &&
-    cantidadNumero > 0
-      ? Math.max(
-          0,
-          stockDisponible -
-            cantidadNumero
-        )
-      : stockDisponible
-
-  const resumenHoy =
-    resumirOperativa(hoy)
-
-  const resumenSemana =
-    resumirOperativa(semana)
+  const resumenHoy = resumirOperativa(hoy)
+  const resumenSemana = resumirOperativa(semana)
 
   const puedeConfirmar =
-    asociadoSeleccionado !==
-      null &&
-    geneticaSeleccionada !==
-      null &&
-    cantidadNumero > 0 &&
-    cantidadNumero <=
-      stockDisponible &&
+    asociadoSeleccionado !== null &&
+    items.length > 0 &&
+    !hayCantidadInvalida &&
+    totalGramos > 0 &&
     aporteNumero > 0 &&
-    (
-      monedaAporte === 'ARS' ||
-      cotizacionUsdNumero > 0
-    ) &&
+    (monedaAporte === 'ARS' || cotizacionUsdNumero > 0) &&
     medioAporte.trim() !== '' &&
     !guardando
 
+  function agregarGenetica(item: StockGenetica) {
+    setItems((actuales) => [
+      ...actuales,
+      {
+        genetica_id: item.genetica_id,
+        genetica: item.genetica,
+        stock_disponible_g: numero(item.stock_disponible_g),
+        lotes_disponibles: item.lotes_disponibles,
+        cantidad: '',
+      },
+    ])
+
+    setBusquedaGenetica('')
+    setExito(null)
+    setError('')
+  }
+
+  function quitarGenetica(geneticaId: number) {
+    setItems((actuales) =>
+      actuales.filter((item) => item.genetica_id !== geneticaId)
+    )
+    setExito(null)
+    setError('')
+  }
+
+  function cambiarCantidad(geneticaId: number, valor: string) {
+    setItems((actuales) =>
+      actuales.map((item) =>
+        item.genetica_id === geneticaId
+          ? { ...item, cantidad: valor }
+          : item
+      )
+    )
+    setExito(null)
+  }
+
   async function confirmar() {
     if (!asociadoSeleccionado) {
-      setError(
-        'Seleccioná un asociado.'
-      )
+      setError('Seleccioná un asociado.')
       return
     }
 
-    if (!geneticaSeleccionada) {
-      setError(
-        'Seleccioná una genética.'
-      )
+    if (!items.length) {
+      setError('Agregá al menos una genética.')
       return
     }
 
-    if (cantidadNumero <= 0) {
-      setError(
-        'Ingresá una cantidad mayor a 0.'
-      )
-      return
-    }
+    for (const item of itemsConCantidad) {
+      if (item.cantidadNumero <= 0) {
+        setError(`Ingresá una cantidad válida para ${item.genetica}.`)
+        return
+      }
 
-    if (
-      cantidadNumero >
-      stockDisponible
-    ) {
-      setError(
-        `Stock insuficiente. Disponible: ${formatearGramos(
-          stockDisponible
-        )}.`
-      )
-      return
+      if (item.cantidadNumero > item.stock_disponible_g) {
+        setError(
+          `Stock insuficiente para ${item.genetica}. Disponible: ${formatearGramos(
+            item.stock_disponible_g
+          )}.`
+        )
+        return
+      }
     }
 
     if (aporteNumero <= 0) {
-      setError(
-        'Ingresá el aporte realizado.'
-      )
+      setError('Ingresá el aporte realizado.')
       return
     }
 
-    if (
-      monedaAporte === 'USD' &&
-      cotizacionUsdNumero <= 0
-    ) {
-      setError(
-        'Ingresá la cotización tomada para el USD.'
-      )
+    if (monedaAporte === 'USD' && cotizacionUsdNumero <= 0) {
+      setError('Ingresá la cotización tomada para el USD.')
       return
     }
 
-    const confirmado =
-      window.confirm(
-        [
-          'Confirmar operación',
-          '',
-          asociadoSeleccionado.nombre_apellido,
-          `${geneticaSeleccionada.genetica} · ${formatearGramos(
-            cantidadNumero
-          )}`,
-          `Aporte: ${formatearAporte(
-            aporteNumero,
-            monedaAporte
-          )}`,
-          ...(monedaAporte === 'USD'
-            ? [
-                `Cotización: 1 USD = ${formatearPesos(
-                  cotizacionUsdNumero
-                )}`,
-                `Equivalente ARS: ${formatearPesos(
-                  aporteEquivalenteArs
-                )}`,
-                'Medio: Efectivo USD',
-              ]
-            : [
-                `Medio: ${medioAporte}`,
-              ]),
-        ].join('\n')
+    const detalleGeneticas = itemsConCantidad
+      .map(
+        (item) =>
+          `${item.genetica} · ${formatearGramos(item.cantidadNumero)}`
       )
+      .join('\n')
 
-    if (!confirmado) {
-      return
-    }
+    const confirmado = window.confirm(
+      [
+        'Confirmar operación',
+        '',
+        asociadoSeleccionado.nombre_apellido,
+        '',
+        detalleGeneticas,
+        '',
+        `Total: ${formatearGramos(totalGramos)}`,
+        `Aporte: ${formatearAporte(aporteNumero, monedaAporte)}`,
+        ...(monedaAporte === 'USD'
+          ? [
+              `Cotización: 1 USD = ${formatearPesos(cotizacionUsdNumero)}`,
+              `Equivalente ARS: ${formatearPesos(aporteEquivalenteArs)}`,
+              'Medio: Efectivo USD',
+            ]
+          : [`Medio: ${medioAporte}`]),
+      ].join('\n')
+    )
+
+    if (!confirmado) return
 
     setGuardando(true)
     setError('')
     setExito(null)
 
-    const resultado =
-      await supabase.rpc(
-        'registrar_dispensa',
-        {
-          p_asociado_id:
-            asociadoSeleccionado.id,
-
-          p_genetica_id:
-            geneticaSeleccionada.genetica_id,
-
-          p_cantidad_g:
-            cantidadNumero,
-
-          p_aporte_importe:
-            aporteNumero,
-
-          p_aporte_moneda:
-            monedaAporte,
-
-          p_tipo_cambio_ars_usd:
-            monedaAporte === 'USD'
-              ? cotizacionUsdNumero
-              : null,
-
-          p_medio_pago:
-            medioAporte,
-
-          p_observaciones:
-            observaciones.trim() ||
-            null,
-        }
-      )
+    const resultado = await supabase.rpc('registrar_dispensa_multiple', {
+      p_asociado_id: asociadoSeleccionado.id,
+      p_items: itemsConCantidad.map((item) => ({
+        genetica_id: item.genetica_id,
+        cantidad_g: item.cantidadNumero,
+      })),
+      p_aporte_importe: aporteNumero,
+      p_aporte_moneda: monedaAporte,
+      p_tipo_cambio_ars_usd:
+        monedaAporte === 'USD' ? cotizacionUsdNumero : null,
+      p_medio_pago: medioAporte,
+      p_observaciones: observaciones.trim() || null,
+    })
 
     if (resultado.error) {
       setError(
@@ -502,19 +408,14 @@ export default function DispensaPage() {
       return
     }
 
-    setExito(
-      resultado.data as ResultadoDispensa
-    )
+    setExito(resultado.data as ResultadoDispensaMultiple)
 
-    setGeneticaId(null)
+    setItems([])
     setBusquedaGenetica('')
-    setCantidad('')
     setAporte('')
     setMonedaAporte('ARS')
     setCotizacionUsd('')
-    setMedioAporte(
-      'Transferencia'
-    )
+    setMedioAporte('Transferencia')
     setObservaciones('')
 
     setGuardando(false)
@@ -536,7 +437,7 @@ export default function DispensaPage() {
 
   return (
     <main className="min-h-screen bg-[#f5f6f7]">
-      <div className="mx-auto max-w-[1500px] px-5 py-6 lg:px-7">
+      <div className="mx-auto max-w-[1500px] px-4 py-5 sm:px-5 lg:px-7 lg:py-6">
         <header className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-emerald-700">
@@ -548,7 +449,7 @@ export default function DispensaPage() {
             </h1>
 
             <p className="mt-1 text-sm text-zinc-500">
-              Registro rápido de entrega y aporte asociado.
+              Una operación puede incluir una o varias genéticas.
             </p>
           </div>
 
@@ -556,10 +457,7 @@ export default function DispensaPage() {
             href="/dispensa/estadisticas"
             className="inline-flex w-fit items-center gap-2 rounded-xl border border-zinc-200 bg-white px-3.5 py-2.5 text-xs font-semibold text-zinc-700 shadow-sm transition hover:bg-zinc-50"
           >
-            Estadísticas
-            <span aria-hidden="true">
-              →
-            </span>
+            Estadísticas <span aria-hidden="true">→</span>
           </Link>
         </header>
 
@@ -568,30 +466,14 @@ export default function DispensaPage() {
             Hoy
           </span>
 
-          <Marcador
-            valor={String(
-              resumenHoy.operaciones
-            )}
-            texto="dispensas"
-          />
-
+          <Marcador valor={String(resumenHoy.operaciones)} texto="dispensas" />
           <Punto />
-
           <Marcador
-            valor={formatearGramos(
-              resumenHoy.gramos
-            )}
+            valor={formatearGramos(resumenHoy.gramos)}
             texto="dispensados"
           />
-
           <Punto />
-
-          <Marcador
-            valor={String(
-              resumenHoy.asociados
-            )}
-            texto="asociados"
-          />
+          <Marcador valor={String(resumenHoy.asociados)} texto="asociados" />
 
           <span className="ml-auto hidden text-zinc-400 lg:inline">
             Semana:{' '}
@@ -600,9 +482,7 @@ export default function DispensaPage() {
             </strong>{' '}
             dispensas ·{' '}
             <strong className="font-semibold text-zinc-600">
-              {formatearGramos(
-                resumenSemana.gramos
-              )}
+              {formatearGramos(resumenSemana.gramos)}
             </strong>
           </span>
         </section>
@@ -615,22 +495,22 @@ export default function DispensaPage() {
 
         {exito && (
           <div className="mb-4 flex flex-col gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-sm text-emerald-900">
-              <strong className="font-semibold">
-                Operación registrada.
-              </strong>{' '}
-              {exito.asociado} ·{' '}
-              {exito.genetica} ·{' '}
-              {formatearGramos(
-                exito.cantidad_g
-              )}
-            </p>
+            <div>
+              <p className="text-sm text-emerald-900">
+                <strong className="font-semibold">Operación registrada.</strong>{' '}
+                {exito.asociado} · {exito.cantidad_geneticas}{' '}
+                {exito.cantidad_geneticas === 1 ? 'genética' : 'genéticas'} ·{' '}
+                {formatearGramos(numero(exito.cantidad_total_g))}
+              </p>
+
+              <p className="mt-0.5 text-[11px] text-emerald-700">
+                Un solo aporte financiero · Stock actualizado por cada genética.
+              </p>
+            </div>
 
             <button
               type="button"
-              onClick={() =>
-                setExito(null)
-              }
+              onClick={() => setExito(null)}
               className="text-left text-xs font-semibold text-emerald-700"
             >
               Cerrar
@@ -639,7 +519,7 @@ export default function DispensaPage() {
         )}
 
         <section className="rounded-2xl border border-zinc-200 bg-white shadow-sm">
-          <div className="grid xl:grid-cols-[minmax(0,1fr)_300px]">
+          <div className="grid xl:grid-cols-[minmax(0,1fr)_320px]">
             <div className="p-4 lg:p-5">
               <div className="grid gap-3 lg:grid-cols-2">
                 <CampoBusqueda
@@ -647,25 +527,19 @@ export default function DispensaPage() {
                   seleccionado={
                     asociadoSeleccionado
                       ? {
-                          titulo:
-                            asociadoSeleccionado.nombre_apellido,
+                          titulo: asociadoSeleccionado.nombre_apellido,
                           detalle: `${numeroSocio(
                             asociadoSeleccionado
                           )} · REPROCANN ${
-                            asociadoSeleccionado.estado_reprocann ??
-                            '—'
+                            asociadoSeleccionado.estado_reprocann ?? '—'
                           }`,
                         }
                       : null
                   }
-                  valor={
-                    busquedaAsociado
-                  }
+                  valor={busquedaAsociado}
                   placeholder="Buscar asociado"
                   onCambiarValor={(valor) => {
-                    setBusquedaAsociado(
-                      valor
-                    )
+                    setBusquedaAsociado(valor)
                     setExito(null)
                   }}
                   onCambiarSeleccion={() => {
@@ -675,223 +549,208 @@ export default function DispensaPage() {
                   }}
                 >
                   {busquedaAsociado.trim() &&
-                    asociadosFiltrados.length >
-                      0 && (
+                    asociadosFiltrados.length > 0 && (
                       <ListaResultados>
-                        {asociadosFiltrados.map(
-                          (item) => (
-                            <Resultado
-                              key={
-                                item.id
-                              }
-                              titulo={
-                                item.nombre_apellido
-                              }
-                              detalle={`${numeroSocio(
-                                item
-                              )}${
-                                item.dni
-                                  ? ` · DNI ${dniOculto(
-                                      item.dni
-                                    )}`
-                                  : ''
-                              } · REPROCANN ${
-                                item.estado_reprocann ??
-                                '—'
-                              }`}
-                              onClick={() => {
-                                setAsociadoId(
-                                  item.id
-                                )
-                                setBusquedaAsociado(
-                                  ''
-                                )
-                              }}
-                            />
-                          )
-                        )}
+                        {asociadosFiltrados.map((item) => (
+                          <Resultado
+                            key={item.id}
+                            titulo={item.nombre_apellido}
+                            detalle={`${numeroSocio(item)}${
+                              item.dni
+                                ? ` · DNI ${dniOculto(item.dni)}`
+                                : ''
+                            } · REPROCANN ${
+                              item.estado_reprocann ?? '—'
+                            }`}
+                            onClick={() => {
+                              setAsociadoId(item.id)
+                              setBusquedaAsociado('')
+                            }}
+                          />
+                        ))}
                       </ListaResultados>
                     )}
                 </CampoBusqueda>
 
                 <CampoBusqueda
-                  etiqueta="Genética"
-                  seleccionado={
-                    geneticaSeleccionada
-                      ? {
-                          titulo:
-                            geneticaSeleccionada.genetica,
-                          detalle: `${formatearGramos(
-                            stockDisponible
-                          )} disponibles · ${
-                            geneticaSeleccionada.lotes_disponibles
-                          } lote${
-                            geneticaSeleccionada.lotes_disponibles ===
-                            1
-                              ? ''
-                              : 's'
-                          }`,
-                        }
-                      : null
-                  }
-                  valor={
-                    busquedaGenetica
-                  }
+                  etiqueta="Agregar genética"
+                  seleccionado={null}
+                  valor={busquedaGenetica}
                   placeholder="Buscar genética"
                   onCambiarValor={(valor) => {
-                    setBusquedaGenetica(
-                      valor
-                    )
+                    setBusquedaGenetica(valor)
                     setExito(null)
                   }}
-                  onCambiarSeleccion={() => {
-                    setGeneticaId(null)
-                    setBusquedaGenetica('')
-                    setCantidad('')
-                    setExito(null)
-                  }}
+                  onCambiarSeleccion={() => {}}
                 >
                   {busquedaGenetica.trim() &&
-                    geneticasFiltradas.length >
-                      0 && (
+                    geneticasFiltradas.length > 0 && (
                       <ListaResultados>
-                        {geneticasFiltradas.map(
-                          (item) => (
-                            <Resultado
-                              key={
-                                item.genetica_id
-                              }
-                              titulo={
-                                item.genetica
-                              }
-                              detalle={`${formatearGramos(
-                                numero(
-                                  item.stock_disponible_g
-                                )
-                              )} disponibles · ${
-                                item.lotes_disponibles
-                              } lote${
-                                item.lotes_disponibles ===
-                                1
-                                  ? ''
-                                  : 's'
-                              }`}
-                              onClick={() => {
-                                setGeneticaId(
-                                  item.genetica_id
-                                )
-                                setBusquedaGenetica(
-                                  ''
-                                )
-                              }}
-                            />
-                          )
-                        )}
+                        {geneticasFiltradas.map((item) => (
+                          <Resultado
+                            key={item.genetica_id}
+                            titulo={item.genetica}
+                            detalle={`${formatearGramos(
+                              numero(item.stock_disponible_g)
+                            )} disponibles · ${item.lotes_disponibles} lote${
+                              item.lotes_disponibles === 1 ? '' : 's'
+                            }`}
+                            accion="Agregar"
+                            onClick={() => agregarGenetica(item)}
+                          />
+                        ))}
                       </ListaResultados>
                     )}
                 </CampoBusqueda>
               </div>
 
+              <div className="mt-4">
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold text-zinc-700">
+                      Genéticas seleccionadas
+                    </p>
+                    <p className="mt-0.5 text-[10px] text-zinc-400">
+                      Cargá los gramos de cada una.
+                    </p>
+                  </div>
+
+                  {!!items.length && (
+                    <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-bold text-emerald-700">
+                      {items.length}{' '}
+                      {items.length === 1 ? 'genética' : 'genéticas'}
+                    </span>
+                  )}
+                </div>
+
+                {!items.length ? (
+                  <div className="rounded-xl border border-dashed border-zinc-200 bg-zinc-50/60 px-4 py-6 text-center text-sm text-zinc-400">
+                    Buscá una genética arriba y agregala a la operación.
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {itemsConCantidad.map((item) => {
+                      const restante =
+                        item.cantidadNumero > 0
+                          ? Math.max(
+                              0,
+                              item.stock_disponible_g - item.cantidadNumero
+                            )
+                          : item.stock_disponible_g
+
+                      const excede =
+                        item.cantidadNumero > item.stock_disponible_g
+
+                      return (
+                        <div
+                          key={item.genetica_id}
+                          className="grid gap-3 rounded-xl border border-zinc-200 bg-zinc-50/50 p-3 sm:grid-cols-[minmax(0,1fr)_150px_auto] sm:items-center"
+                        >
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-zinc-950">
+                              {item.genetica}
+                            </p>
+
+                            <p className="mt-0.5 text-[10px] text-zinc-500">
+                              Disponible:{' '}
+                              <strong className="font-semibold text-zinc-700">
+                                {formatearGramos(item.stock_disponible_g)}
+                              </strong>{' '}
+                              · Luego:{' '}
+                              <strong
+                                className={
+                                  excede
+                                    ? 'font-semibold text-red-600'
+                                    : 'font-semibold text-zinc-700'
+                                }
+                              >
+                                {formatearGramos(restante)}
+                              </strong>
+                            </p>
+                          </div>
+
+                          <div className="relative">
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={item.cantidad}
+                              onChange={(event) =>
+                                cambiarCantidad(
+                                  item.genetica_id,
+                                  event.target.value
+                                )
+                              }
+                              placeholder="Cantidad"
+                              className={`campo-compacto pr-10 ${
+                                excede ? 'campo-error' : ''
+                              }`}
+                            />
+
+                            <span className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-semibold text-zinc-400">
+                              g
+                            </span>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => quitarGenetica(item.genetica_id)}
+                            className="rounded-lg px-2.5 py-2 text-xs font-semibold text-zinc-400 transition hover:bg-white hover:text-red-600"
+                            aria-label={`Quitar ${item.genetica}`}
+                          >
+                            Quitar
+                          </button>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+
               <div
-                className={`mt-3 grid gap-3 ${
+                className={`mt-4 grid gap-3 ${
                   monedaAporte === 'USD'
-                    ? 'xl:grid-cols-[150px_110px_180px_190px_180px_minmax(0,1fr)]'
-                    : 'xl:grid-cols-[150px_110px_190px_200px_minmax(0,1fr)]'
+                    ? 'xl:grid-cols-[110px_180px_190px_180px_minmax(0,1fr)]'
+                    : 'xl:grid-cols-[110px_190px_200px_minmax(0,1fr)]'
                 }`}
               >
-                <Campo
-                  etiqueta="Cantidad"
-                >
-                  <div className="relative">
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={cantidad}
-                      onChange={(event) => {
-                        setCantidad(
-                          event.target.value
-                        )
-                        setExito(null)
-                      }}
-                      className="campo-compacto pr-10"
-                    />
-
-                    <span className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-semibold text-zinc-400">
-                      g
-                    </span>
-                  </div>
-                </Campo>
-
-                <Campo
-                  etiqueta="Moneda"
-                >
+                <Campo etiqueta="Moneda">
                   <select
                     value={monedaAporte}
                     onChange={(event) => {
-                      const nuevaMoneda =
-                        event.target.value as
-                          | 'ARS'
-                          | 'USD'
+                      const nuevaMoneda = event.target.value as 'ARS' | 'USD'
 
-                      setMonedaAporte(
-                        nuevaMoneda
-                      )
+                      setMonedaAporte(nuevaMoneda)
 
-                      if (
-                        nuevaMoneda ===
-                        'USD'
-                      ) {
-                        setMedioAporte(
-                          'Efectivo USD'
-                        )
+                      if (nuevaMoneda === 'USD') {
+                        setMedioAporte('Efectivo USD')
                       } else {
-                        setMedioAporte(
-                          'Transferencia'
-                        )
-                        setCotizacionUsd(
-                          ''
-                        )
+                        setMedioAporte('Transferencia')
+                        setCotizacionUsd('')
                       }
 
                       setExito(null)
                     }}
                     className="campo-compacto"
                   >
-                    <option value="ARS">
-                      ARS
-                    </option>
-                    <option value="USD">
-                      USD
-                    </option>
+                    <option value="ARS">ARS</option>
+                    <option value="USD">USD</option>
                   </select>
                 </Campo>
 
-                <Campo
-                  etiqueta="Aporte"
-                >
+                <Campo etiqueta="Aporte">
                   <div className="flex overflow-hidden rounded-xl border border-zinc-200 bg-white transition focus-within:border-emerald-400 focus-within:ring-4 focus-within:ring-emerald-100">
                     <span className="flex min-w-[48px] items-center justify-center border-r border-zinc-200 bg-zinc-50 px-3 text-xs font-bold text-zinc-500">
-                      {monedaAporte ===
-                      'USD'
-                        ? 'USD'
-                        : '$'}
+                      {monedaAporte === 'USD' ? 'USD' : '$'}
                     </span>
 
                     <input
                       type="number"
                       min="0"
-                      step={
-                        monedaAporte ===
-                        'USD'
-                          ? '0.01'
-                          : '1'
-                      }
+                      step={monedaAporte === 'USD' ? '0.01' : '1'}
                       value={aporte}
                       onChange={(event) => {
-                        setAporte(
-                          event.target.value
-                        )
+                        setAporte(event.target.value)
                         setExito(null)
                       }}
                       className="min-w-0 flex-1 bg-white px-3.5 py-[0.72rem] text-sm font-semibold text-zinc-950 outline-none"
@@ -899,11 +758,8 @@ export default function DispensaPage() {
                   </div>
                 </Campo>
 
-                {monedaAporte ===
-                  'USD' && (
-                  <Campo
-                    etiqueta="Cotización USD"
-                  >
+                {monedaAporte === 'USD' && (
+                  <Campo etiqueta="Cotización USD">
                     <div className="flex overflow-hidden rounded-xl border border-zinc-200 bg-white transition focus-within:border-emerald-400 focus-within:ring-4 focus-within:ring-emerald-100">
                       <span className="flex items-center border-r border-zinc-200 bg-zinc-50 px-3 text-[10px] font-semibold text-zinc-500">
                         1 USD =
@@ -913,16 +769,12 @@ export default function DispensaPage() {
                         type="number"
                         min="0"
                         step="0.01"
-                        value={
-                          cotizacionUsd
-                        }
+                        value={cotizacionUsd}
                         onChange={(event) => {
-                          setCotizacionUsd(
-                            event.target.value
-                          )
+                          setCotizacionUsd(event.target.value)
                           setExito(null)
                         }}
-                        className="min-w-0 flex-1 bg-white px-3 py-[0.72rem] text-sm font-semibold text-zinc-950 outline-none"
+                        className="min-w-0 flex-1 bg-white px-3.5 py-[0.72rem] text-sm font-semibold text-zinc-950 outline-none"
                       />
 
                       <span className="flex items-center border-l border-zinc-200 bg-zinc-50 px-2.5 text-[10px] font-bold text-zinc-400">
@@ -932,11 +784,8 @@ export default function DispensaPage() {
                   </Campo>
                 )}
 
-                <Campo
-                  etiqueta="Medio"
-                >
-                  {monedaAporte ===
-                  'USD' ? (
+                <Campo etiqueta="Medio">
+                  {monedaAporte === 'USD' ? (
                     <div className="flex min-h-[43px] items-center rounded-xl border border-zinc-200 bg-zinc-50 px-3.5 text-sm font-semibold text-zinc-700">
                       Efectivo USD
                     </div>
@@ -944,37 +793,25 @@ export default function DispensaPage() {
                     <select
                       value={medioAporte}
                       onChange={(event) =>
-                        setMedioAporte(
-                          event.target.value
-                        )
+                        setMedioAporte(event.target.value)
                       }
                       className="campo-compacto"
                     >
-                      {MEDIOS_APORTE.map(
-                        (medio) => (
-                          <option
-                            key={medio}
-                            value={medio}
-                          >
-                            {medio}
-                          </option>
-                        )
-                      )}
+                      {MEDIOS_APORTE.map((medio) => (
+                        <option key={medio} value={medio}>
+                          {medio}
+                        </option>
+                      ))}
                     </select>
                   )}
                 </Campo>
 
-                <Campo
-                  etiqueta="Observación"
-                  opcional
-                >
+                <Campo etiqueta="Observación" opcional>
                   <input
                     type="text"
                     value={observaciones}
                     onChange={(event) =>
-                      setObservaciones(
-                        event.target.value
-                      )
+                      setObservaciones(event.target.value)
                     }
                     className="campo-compacto"
                   />
@@ -988,66 +825,28 @@ export default function DispensaPage() {
                     <span className="text-zinc-500">
                       Aporte recibido:{' '}
                       <strong className="font-semibold text-zinc-800">
-                        {formatearAporte(
-                          aporteNumero,
-                          'USD'
-                        )}
+                        {formatearAporte(aporteNumero, 'USD')}
                       </strong>
                     </span>
 
                     <span className="text-zinc-500">
                       Cotización tomada:{' '}
                       <strong className="font-semibold text-zinc-800">
-                        1 USD ={' '}
-                        {formatearPesos(
-                          cotizacionUsdNumero
-                        )}
+                        1 USD = {formatearPesos(cotizacionUsdNumero)}
                       </strong>
                     </span>
 
                     <span className="text-zinc-500">
                       Equivalente ARS:{' '}
                       <strong className="font-semibold text-sky-800">
-                        {formatearPesos(
-                          aporteEquivalenteArs
-                        )}
+                        {formatearPesos(aporteEquivalenteArs)}
                       </strong>
                     </span>
-                  </div>
-                )}
-
-              {geneticaSeleccionada &&
-                cantidadNumero > 0 && (
-                  <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg bg-zinc-50 px-3 py-2 text-[11px]">
-                    <span className="text-zinc-500">
-                      Disponible:{' '}
-                      <strong className="font-semibold text-zinc-800">
-                        {formatearGramos(
-                          stockDisponible
-                        )}
-                      </strong>
-                    </span>
-
-                    <span className="text-zinc-500">
-                      Luego:{' '}
-                      <strong className="font-semibold text-zinc-800">
-                        {formatearGramos(
-                          stockRestante
-                        )}
-                      </strong>
-                    </span>
-
-                    {cantidadNumero >
-                      stockDisponible && (
-                      <span className="font-semibold text-red-600">
-                        Cantidad superior al Stock disponible
-                      </span>
-                    )}
                   </div>
                 )}
             </div>
 
-            <aside className="border-t border-zinc-100 bg-zinc-50/70 p-4 xl:border-l xl:border-t-0 lg:p-5">
+            <aside className="border-t border-zinc-100 bg-zinc-50/70 p-4 lg:p-5 xl:border-l xl:border-t-0">
               <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-zinc-400">
                 Confirmar
               </p>
@@ -1055,53 +854,59 @@ export default function DispensaPage() {
               <div className="mt-3 space-y-2.5">
                 <ResumenFila
                   titulo="Asociado"
-                  valor={
-                    asociadoSeleccionado
-                      ?.nombre_apellido ??
-                    '—'
-                  }
+                  valor={asociadoSeleccionado?.nombre_apellido ?? '—'}
                 />
 
                 <ResumenFila
-                  titulo="Genética"
-                  valor={
-                    geneticaSeleccionada
-                      ?.genetica ??
-                    '—'
-                  }
+                  titulo="Genéticas"
+                  valor={items.length ? String(items.length) : '—'}
                 />
 
                 <ResumenFila
-                  titulo="Cantidad"
+                  titulo="Cantidad total"
                   valor={
-                    cantidadNumero > 0
-                      ? formatearGramos(
-                          cantidadNumero
-                        )
-                      : '—'
+                    totalGramos > 0 ? formatearGramos(totalGramos) : '—'
                   }
                 />
+
+                {!!items.length && (
+                  <div className="rounded-lg border border-zinc-200 bg-white px-3 py-2.5">
+                    <div className="space-y-1.5">
+                      {itemsConCantidad.map((item) => (
+                        <div
+                          key={item.genetica_id}
+                          className="flex items-center justify-between gap-3 text-[11px]"
+                        >
+                          <span className="min-w-0 truncate text-zinc-500">
+                            {item.genetica}
+                          </span>
+
+                          <strong className="shrink-0 font-semibold text-zinc-800">
+                            {item.cantidadNumero > 0
+                              ? formatearGramos(item.cantidadNumero)
+                              : '—'}
+                          </strong>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 <ResumenFila
                   titulo="Aporte"
                   valor={
                     aporteNumero > 0
-                      ? formatearAporte(
-                          aporteNumero,
-                          monedaAporte
-                        )
+                      ? formatearAporte(aporteNumero, monedaAporte)
                       : '—'
                   }
                 />
 
-                {monedaAporte ===
-                  'USD' && (
+                {monedaAporte === 'USD' && (
                   <>
                     <ResumenFila
                       titulo="Cotización"
                       valor={
-                        cotizacionUsdNumero >
-                        0
+                        cotizacionUsdNumero > 0
                           ? `1 USD = ${formatearPesos(
                               cotizacionUsdNumero
                             )}`
@@ -1112,11 +917,8 @@ export default function DispensaPage() {
                     <ResumenFila
                       titulo="Equiv. ARS"
                       valor={
-                        aporteEquivalenteArs >
-                        0
-                          ? formatearPesos(
-                              aporteEquivalenteArs
-                            )
+                        aporteEquivalenteArs > 0
+                          ? formatearPesos(aporteEquivalenteArs)
                           : '—'
                       }
                     />
@@ -1127,18 +929,14 @@ export default function DispensaPage() {
               <button
                 type="button"
                 onClick={confirmar}
-                disabled={
-                  !puedeConfirmar
-                }
+                disabled={!puedeConfirmar}
                 className="mt-4 w-full rounded-xl bg-emerald-700 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-zinc-300 disabled:text-zinc-500"
               >
-                {guardando
-                  ? 'Registrando...'
-                  : 'Confirmar operación'}
+                {guardando ? 'Registrando...' : 'Confirmar operación'}
               </button>
 
               <p className="mt-2 text-center text-[10px] text-zinc-400">
-                Actualiza Dispensa, Stock y Finanzas.
+                Un aporte · múltiples genéticas · Stock y Finanzas coordinados.
               </p>
             </aside>
           </div>
@@ -1173,115 +971,84 @@ export default function DispensaPage() {
               <table className="w-full min-w-[860px] text-left">
                 <thead className="bg-zinc-50 text-[9px] font-bold uppercase tracking-[0.08em] text-zinc-400">
                   <tr>
-                    <th className="px-4 py-2.5 lg:px-5">
-                      Fecha
-                    </th>
-                    <th className="px-4 py-2.5 lg:px-5">
-                      Asociado
-                    </th>
-                    <th className="px-4 py-2.5 lg:px-5">
-                      Genética
-                    </th>
+                    <th className="px-4 py-2.5 lg:px-5">Fecha</th>
+                    <th className="px-4 py-2.5 lg:px-5">Asociado</th>
+                    <th className="px-4 py-2.5 lg:px-5">Genética</th>
                     <th className="px-4 py-2.5 text-right lg:px-5">
                       Cantidad
                     </th>
                     <th className="px-4 py-2.5 text-right lg:px-5">
                       Aporte
                     </th>
-                    <th className="px-4 py-2.5 lg:px-5">
-                      Medio
-                    </th>
-                    <th className="px-4 py-2.5 lg:px-5">
-                      Lote
-                    </th>
+                    <th className="px-4 py-2.5 lg:px-5">Medio</th>
+                    <th className="px-4 py-2.5 lg:px-5">Lote</th>
                   </tr>
                 </thead>
 
                 <tbody className="divide-y divide-zinc-100">
-                  {recientes.map(
-                    (item) => (
-                      <tr
-                        key={
-                          item.dispensa_id
-                        }
-                        className="text-sm text-zinc-700"
-                      >
-                        <td className="whitespace-nowrap px-4 py-3 text-xs text-zinc-500 lg:px-5">
-                          {formatearFecha(
-                            item.fecha
-                          )}
-                        </td>
+                  {recientes.map((item) => (
+                    <tr
+                      key={item.dispensa_id}
+                      className="text-sm text-zinc-700"
+                    >
+                      <td className="whitespace-nowrap px-4 py-3 text-xs text-zinc-500 lg:px-5">
+                        {formatearFecha(item.fecha)}
+                      </td>
 
-                        <td className="px-4 py-3 lg:px-5">
-                          <p className="font-semibold text-zinc-950">
-                            {
-                              item.asociado
-                            }
-                          </p>
+                      <td className="px-4 py-3 lg:px-5">
+                        <p className="font-semibold text-zinc-950">
+                          {item.asociado}
+                        </p>
 
-                          <p className="mt-0.5 text-[10px] text-zinc-400">
-                            {item.numero_socio
-                              ? `#${item.numero_socio}`
-                              : `#${item.asociado_id}`}
-                          </p>
-                        </td>
+                        <p className="mt-0.5 text-[10px] text-zinc-400">
+                          {item.numero_socio
+                            ? `#${item.numero_socio}`
+                            : `#${item.asociado_id}`}
+                        </p>
+                      </td>
 
-                        <td className="px-4 py-3 font-medium text-zinc-900 lg:px-5">
-                          {item.genetica}
-                        </td>
+                      <td className="px-4 py-3 font-medium text-zinc-900 lg:px-5">
+                        {item.genetica}
+                      </td>
 
-                        <td className="px-4 py-3 text-right font-semibold text-zinc-950 lg:px-5">
-                          {formatearGramos(
-                            numero(
-                              item.cantidad_g
-                            )
-                          )}
-                        </td>
+                      <td className="px-4 py-3 text-right font-semibold text-zinc-950 lg:px-5">
+                        {formatearGramos(numero(item.cantidad_g))}
+                      </td>
 
-                        <td className="px-4 py-3 text-right lg:px-5">
-                          {item.aporte_importe ? (
-                            <>
-                              <p className="text-xs font-semibold text-zinc-700">
-                                {formatearAporte(
-                                  numero(
-                                    item.aporte_importe
-                                  ),
-                                  item.aporte_moneda ===
-                                    'USD'
-                                    ? 'USD'
-                                    : 'ARS'
-                                )}
-                              </p>
+                      <td className="px-4 py-3 text-right lg:px-5">
+                        {item.aporte_importe ? (
+                          <>
+                            <p className="text-xs font-semibold text-zinc-700">
+                              {formatearAporte(
+                                numero(item.aporte_importe),
+                                item.aporte_moneda === 'USD' ? 'USD' : 'ARS'
+                              )}
+                            </p>
 
-                              {item.aporte_moneda ===
-                                'USD' &&
-                                item.aporte_equivalente_ars && (
-                                  <p className="mt-0.5 text-[10px] text-zinc-400">
-                                    ≈{' '}
-                                    {formatearPesos(
-                                      numero(
-                                        item.aporte_equivalente_ars
-                                      )
-                                    )}
-                                  </p>
-                                )}
-                            </>
-                          ) : (
-                            '—'
-                          )}
-                        </td>
+                            {item.aporte_moneda === 'USD' &&
+                              item.aporte_equivalente_ars && (
+                                <p className="mt-0.5 text-[10px] text-zinc-400">
+                                  ≈{' '}
+                                  {formatearPesos(
+                                    numero(item.aporte_equivalente_ars)
+                                  )}
+                                </p>
+                              )}
+                          </>
+                        ) : (
+                          '—'
+                        )}
+                      </td>
 
-                        <td className="px-4 py-3 text-xs text-zinc-600 lg:px-5">
-                          {item.medio_pago ??
-                            '—'}
-                        </td>
+                      <td className="px-4 py-3 text-xs text-zinc-600 lg:px-5">
+                        {item.medio_pago ?? '—'}
+                      </td>
 
-                        <td className="px-4 py-3 text-xs text-zinc-500 lg:px-5">
-                          {item.lotes ?? '—'}
-                        </td>
-                      </tr>
-                    )
-                  )}
+                      <td className="px-4 py-3 text-xs text-zinc-500 lg:px-5">
+                        {item.lotes ?? '—'}
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
@@ -1305,30 +1072,25 @@ export default function DispensaPage() {
             border-color: rgb(52 211 153);
             box-shadow: 0 0 0 4px rgb(209 250 229);
           }
+
+          .campo-error {
+            border-color: rgb(252 165 165);
+            background: rgb(254 242 242);
+          }
         `}</style>
       </div>
     </main>
   )
 }
 
-function resumirOperativa(
-  items: Dispensa[]
-) {
+function resumirOperativa(items: Dispensa[]) {
   return {
     operaciones: items.length,
     gramos: items.reduce(
-      (total, item) =>
-        total +
-        numero(item.cantidad_g),
+      (total, item) => total + numero(item.cantidad_g),
       0
     ),
-    asociados:
-      new Set(
-        items.map(
-          (item) =>
-            item.asociado_id
-        )
-      ).size,
+    asociados: new Set(items.map((item) => item.asociado_id)).size,
   }
 }
 
@@ -1341,20 +1103,14 @@ function Marcador({
 }) {
   return (
     <span className="text-zinc-500">
-      <strong className="font-semibold text-zinc-800">
-        {valor}
-      </strong>{' '}
+      <strong className="font-semibold text-zinc-800">{valor}</strong>{' '}
       {texto}
     </span>
   )
 }
 
 function Punto() {
-  return (
-    <span className="text-zinc-300">
-      ·
-    </span>
-  )
+  return <span className="text-zinc-300">·</span>
 }
 
 function Campo({
@@ -1374,9 +1130,7 @@ function Campo({
         </span>
 
         {opcional && (
-          <span className="text-[10px] text-zinc-400">
-            opcional
-          </span>
+          <span className="text-[10px] text-zinc-400">opcional</span>
         )}
       </div>
 
@@ -1401,9 +1155,7 @@ function CampoBusqueda({
   } | null
   valor: string
   placeholder: string
-  onCambiarValor: (
-    valor: string
-  ) => void
+  onCambiarValor: (valor: string) => void
   onCambiarSeleccion: () => void
   children: ReactNode
 }) {
@@ -1427,9 +1179,7 @@ function CampoBusqueda({
 
           <button
             type="button"
-            onClick={
-              onCambiarSeleccion
-            }
+            onClick={onCambiarSeleccion}
             className="shrink-0 text-[11px] font-semibold text-emerald-700"
           >
             Cambiar
@@ -1440,11 +1190,7 @@ function CampoBusqueda({
           <input
             autoComplete="off"
             value={valor}
-            onChange={(event) =>
-              onCambiarValor(
-                event.target.value
-              )
-            }
+            onChange={(event) => onCambiarValor(event.target.value)}
             placeholder={placeholder}
             className="campo-compacto"
           />
@@ -1456,11 +1202,7 @@ function CampoBusqueda({
   )
 }
 
-function ListaResultados({
-  children,
-}: {
-  children: ReactNode
-}) {
+function ListaResultados({ children }: { children: ReactNode }) {
   return (
     <div className="absolute left-0 right-0 top-full z-30 mt-1.5 overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-xl">
       {children}
@@ -1472,10 +1214,12 @@ function Resultado({
   titulo,
   detalle,
   onClick,
+  accion = 'Elegir',
 }: {
   titulo: string
   detalle: string
   onClick: () => void
+  accion?: string
 }) {
   return (
     <button
@@ -1494,7 +1238,7 @@ function Resultado({
       </div>
 
       <span className="shrink-0 text-[10px] font-semibold text-emerald-700">
-        Elegir
+        {accion}
       </span>
     </button>
   )
@@ -1509,149 +1253,82 @@ function ResumenFila({
 }) {
   return (
     <div className="flex items-start justify-between gap-3 border-b border-zinc-200/70 pb-2.5 last:border-b-0 last:pb-0">
-      <span className="text-xs text-zinc-500">
-        {titulo}
-      </span>
+      <span className="text-xs text-zinc-500">{titulo}</span>
 
-      <strong className="max-w-[160px] text-right text-xs font-semibold text-zinc-900">
+      <strong className="max-w-[170px] text-right text-xs font-semibold text-zinc-900">
         {valor}
       </strong>
     </div>
   )
 }
 
-function numeroSocio(
-  asociado: Asociado
-) {
+function numeroSocio(asociado: Asociado) {
   return asociado.numero_socio
     ? `#${asociado.numero_socio}`
     : `#${asociado.id}`
 }
 
-function dniOculto(
-  dni: string
-) {
-  const limpio =
-    String(dni).replace(
-      /\D/g,
-      ''
-    )
+function dniOculto(dni: string) {
+  const limpio = String(dni).replace(/\D/g, '')
 
-  if (limpio.length <= 4) {
-    return limpio
-  }
+  if (limpio.length <= 4) return limpio
 
-  return `${'*'.repeat(
-    Math.max(
-      2,
-      limpio.length - 4
-    )
-  )}${limpio.slice(-4)}`
+  return `${'*'.repeat(Math.max(2, limpio.length - 4))}${limpio.slice(-4)}`
 }
 
 function fechaLocal() {
-  return formatearFechaISO(
-    new Date()
-  )
+  return formatearFechaISO(new Date())
 }
 
 function fechaInicioSemana() {
   const hoy = new Date()
   const dia = hoy.getDay()
-  const desplazamiento =
-    dia === 0
-      ? -6
-      : 1 - dia
+  const desplazamiento = dia === 0 ? -6 : 1 - dia
 
-  const lunes =
-    new Date(hoy)
-  lunes.setDate(
-    hoy.getDate() +
-      desplazamiento
-  )
+  const lunes = new Date(hoy)
+  lunes.setDate(hoy.getDate() + desplazamiento)
 
-  return formatearFechaISO(
-    lunes
-  )
+  return formatearFechaISO(lunes)
 }
 
-function formatearFechaISO(
-  fecha: Date
-) {
-  const year =
-    fecha.getFullYear()
-  const month =
-    String(
-      fecha.getMonth() + 1
-    ).padStart(2, '0')
-  const day =
-    String(
-      fecha.getDate()
-    ).padStart(2, '0')
+function formatearFechaISO(fecha: Date) {
+  const year = fecha.getFullYear()
+  const month = String(fecha.getMonth() + 1).padStart(2, '0')
+  const day = String(fecha.getDate()).padStart(2, '0')
 
   return `${year}-${month}-${day}`
 }
 
-function normalizar(
-  valor: unknown
-) {
+function normalizar(valor: unknown) {
   return String(valor ?? '')
     .normalize('NFD')
-    .replace(
-      /[\u0300-\u036f]/g,
-      ''
-    )
+    .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .trim()
 }
 
-function numero(
-  valor: unknown
-) {
+function numero(valor: unknown) {
   const n = Number(valor)
-  return Number.isFinite(n)
-    ? n
-    : 0
+  return Number.isFinite(n) ? n : 0
 }
 
-function numeroPositivo(
-  valor: string
-) {
-  const n = Number(
-    String(valor).replace(
-      ',',
-      '.'
-    )
-  )
-
-  return Number.isFinite(n) &&
-    n > 0
-    ? n
-    : 0
+function numeroPositivo(valor: string) {
+  const n = Number(String(valor).replace(',', '.'))
+  return Number.isFinite(n) && n > 0 ? n : 0
 }
 
-function formatearGramos(
-  gramos: number
-) {
-  return `${new Intl.NumberFormat(
-    'es-AR',
-    {
-      maximumFractionDigits: 2,
-    }
-  ).format(gramos)} g`
+function formatearGramos(gramos: number) {
+  return `${new Intl.NumberFormat('es-AR', {
+    maximumFractionDigits: 2,
+  }).format(gramos)} g`
 }
 
-function formatearPesos(
-  importe: number
-) {
-  return new Intl.NumberFormat(
-    'es-AR',
-    {
-      style: 'currency',
-      currency: 'ARS',
-      maximumFractionDigits: 0,
-    }
-  ).format(importe)
+function formatearPesos(importe: number) {
+  return new Intl.NumberFormat('es-AR', {
+    style: 'currency',
+    currency: 'ARS',
+    maximumFractionDigits: 0,
+  }).format(importe)
 }
 
 function formatearAporte(
@@ -1659,68 +1336,48 @@ function formatearAporte(
   moneda: 'ARS' | 'USD'
 ) {
   if (moneda === 'USD') {
-    return new Intl.NumberFormat(
-      'es-AR',
-      {
-        style: 'currency',
-        currency: 'USD',
-        minimumFractionDigits: 0,
-        maximumFractionDigits: 2,
-      }
-    ).format(importe)
+    return new Intl.NumberFormat('es-AR', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
+    }).format(importe)
   }
 
-  return formatearPesos(
-    importe
-  )
+  return formatearPesos(importe)
 }
 
-function formatearFecha(
-  fecha: string | null
-) {
+function formatearFecha(fecha: string | null) {
   if (!fecha) return '—'
 
-  return new Intl.DateTimeFormat(
-    'es-AR',
-    {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-    }
-  ).format(
-    new Date(
-      `${fecha}T12:00:00`
-    )
-  )
+  return new Intl.DateTimeFormat('es-AR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  }).format(new Date(`${fecha}T12:00:00`))
 }
 
 function describirErrorSupabase(
   error: unknown,
   fallback: string
 ) {
-  if (
-    !error ||
-    typeof error !== 'object'
-  ) {
-    return fallback
+  if (!error || typeof error !== 'object') return fallback
+
+  const e = error as {
+    message?: string
+    details?: string
+    hint?: string
+    code?: string
   }
 
-  const e =
-    error as {
-      message?: string
-      details?: string
-      hint?: string
-      code?: string
-    }
-
-  return [
-    e.message,
-    e.details,
-    e.hint,
-    e.code
-      ? `Código ${e.code}`
-      : '',
-  ]
-    .filter(Boolean)
-    .join(' · ') || fallback
+  return (
+    [
+      e.message,
+      e.details,
+      e.hint,
+      e.code ? `Código ${e.code}` : '',
+    ]
+      .filter(Boolean)
+      .join(' · ') || fallback
+  )
 }

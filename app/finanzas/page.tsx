@@ -456,6 +456,16 @@ export default function FinanzasPage() {
 
   const [
 
+    monedaForm,
+
+    setMonedaForm,
+
+  ] = useState<'ARS' | 'USD'>('ARS')
+
+
+
+  const [
+
     medioForm,
 
     setMedioForm,
@@ -1090,9 +1100,25 @@ export default function FinanzasPage() {
 
               ) +
 
-                numero(
+                (
 
-                  item.importe
+                  item.moneda === 'USD'
+
+                    ? item.importe_ars !== null
+
+                      ? numero(
+
+                          item.importe_ars
+
+                        )
+
+                      : 0
+
+                    : numero(
+
+                        item.importe
+
+                      )
 
                 )
 
@@ -1374,6 +1400,8 @@ export default function FinanzasPage() {
 
     setImporteForm('')
 
+    setMonedaForm('ARS')
+
     setMedioForm(
 
       'Transferencia'
@@ -1500,11 +1528,17 @@ export default function FinanzasPage() {
 
             fechaForm,
 
-          p_moneda: 'ARS',
+          p_moneda:
+
+            monedaForm,
 
           p_medio_pago:
 
-            medioForm || null,
+            monedaForm === 'USD'
+
+              ? 'Efectivo USD'
+
+              : medioForm || null,
 
           p_pagado_por:
 
@@ -2838,7 +2872,63 @@ export default function FinanzasPage() {
 
 
 
-          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <div className="mt-4 grid gap-4 sm:grid-cols-3">
+
+            <Campo
+
+              titulo="Moneda"
+
+            >
+
+              <select
+
+                value={monedaForm}
+
+                onChange={(event) => {
+
+                  const moneda =
+
+                    event.target.value as
+
+                      | 'ARS'
+
+                      | 'USD'
+
+                  setMonedaForm(moneda)
+
+                  setMedioForm(
+
+                    moneda === 'USD'
+
+                      ? 'Efectivo USD'
+
+                      : 'Transferencia'
+
+                  )
+
+                }}
+
+                className="campo-finanzas"
+
+              >
+
+                <option value="ARS">
+
+                  ARS
+
+                </option>
+
+                <option value="USD">
+
+                  USD
+
+                </option>
+
+              </select>
+
+            </Campo>
+
+
 
             <Campo
 
@@ -2848,9 +2938,13 @@ export default function FinanzasPage() {
 
               <div className="relative">
 
-                <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-semibold text-zinc-400">
+                <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-xs font-semibold text-zinc-400">
 
-                  $
+                  {monedaForm === 'USD'
+
+                    ? 'US$'
+
+                    : '$'}
 
                 </span>
 
@@ -2862,7 +2956,15 @@ export default function FinanzasPage() {
 
                   min="0"
 
-                  step="1"
+                  step={
+
+                    monedaForm === 'USD'
+
+                      ? '0.01'
+
+                      : '1'
+
+                  }
 
                   value={
 
@@ -2880,7 +2982,15 @@ export default function FinanzasPage() {
 
                   }
 
-                  className="campo-finanzas pl-8"
+                  className={
+
+                    monedaForm === 'USD'
+
+                      ? 'campo-finanzas pl-12'
+
+                      : 'campo-finanzas pl-8'
+
+                  }
 
                 />
 
@@ -2896,45 +3006,57 @@ export default function FinanzasPage() {
 
             >
 
-              <select
+              {monedaForm === 'USD' ? (
 
-                value={medioForm}
+                <div className="flex min-h-[43px] items-center rounded-xl border border-zinc-200 bg-zinc-50 px-3.5 text-sm font-semibold text-zinc-700">
 
-                onChange={(event) =>
+                  Efectivo USD
 
-                  setMedioForm(
+                </div>
 
-                    event.target.value
+              ) : (
 
-                  )
+                <select
 
-                }
+                  value={medioForm}
 
-                className="campo-finanzas"
+                  onChange={(event) =>
 
-              >
+                    setMedioForm(
 
-                {MEDIOS.map(
+                      event.target.value
 
-                  (medio) => (
+                    )
 
-                    <option
+                  }
 
-                      key={medio}
+                  className="campo-finanzas"
 
-                      value={medio}
+                >
 
-                    >
+                  {MEDIOS.map(
 
-                      {medio}
+                    (medio) => (
 
-                    </option>
+                      <option
 
-                  )
+                        key={medio}
 
-                )}
+                        value={medio}
 
-              </select>
+                      >
+
+                        {medio}
+
+                      </option>
+
+                    )
+
+                  )}
+
+                </select>
+
+              )}
 
             </Campo>
 
@@ -3614,7 +3736,9 @@ function MovimientoFilaSeria({
 
 
 
-        {item.moneda === 'USD' && (
+        {item.moneda === 'USD' &&
+
+          item.importe_ars !== null && (
 
           <p className="mt-0.5 text-[9px] text-zinc-400">
 
@@ -4170,7 +4294,9 @@ function MovimientoFila({
 
 
 
-        {item.moneda === 'USD' && (
+        {item.moneda === 'USD' &&
+
+          item.importe_ars !== null && (
 
           <p className="mt-0.5 text-[10px] text-zinc-400">
 
@@ -4866,7 +4992,7 @@ function formatearUsd(
 
       minimumFractionDigits: 0,
 
-      maximumFractionDigits: 0,
+      maximumFractionDigits: 2,
 
     }
 
