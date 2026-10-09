@@ -76,8 +76,6 @@ type ResultadoDispensaMultiple = {
   }>
 }
 
-const MEDIOS_APORTE = ['Transferencia', 'Efectivo', 'Otro']
-
 export default function DispensaPage() {
   const supabase = useMemo(() => createClient(), [])
 
@@ -101,7 +99,10 @@ export default function DispensaPage() {
   const [aporte, setAporte] = useState('')
   const [monedaAporte, setMonedaAporte] = useState<'ARS' | 'USD'>('ARS')
   const [cotizacionUsd, setCotizacionUsd] = useState('')
-  const [medioAporte, setMedioAporte] = useState('Transferencia')
+  const [medioAporte, setMedioAporte] = useState('')
+  const [aporteEfectivo, setAporteEfectivo] = useState('')
+  const [aporteTransferencia, setAporteTransferencia] = useState('')
+  const [aporteEfectivoUsd, setAporteEfectivoUsd] = useState('')
   const [observaciones, setObservaciones] = useState('')
 
   useEffect(() => {
@@ -256,11 +257,23 @@ export default function DispensaPage() {
       item.cantidadNumero > item.stock_disponible_g
   )
 
-  const aporteNumero = numeroPositivo(aporte)
+  const aporteEfectivoNumero = numeroPositivo(aporteEfectivo)
+  const aporteTransferenciaNumero = numeroPositivo(aporteTransferencia)
+  const aporteEfectivoUsdNumero = numeroPositivo(aporteEfectivoUsd)
   const cotizacionUsdNumero = numeroPositivo(cotizacionUsd)
 
+  const aporteMixtoArs =
+    aporteEfectivoNumero +
+    aporteTransferenciaNumero +
+    aporteEfectivoUsdNumero * cotizacionUsdNumero
+
+  const aporteNumero =
+    medioAporte === 'Mixto'
+      ? aporteMixtoArs
+      : numeroPositivo(aporte)
+
   const aporteEquivalenteArs =
-    monedaAporte === 'USD'
+    monedaAporte === 'USD' && medioAporte !== 'Mixto'
       ? aporteNumero * cotizacionUsdNumero
       : aporteNumero
 
@@ -275,6 +288,17 @@ export default function DispensaPage() {
     aporteNumero > 0 &&
     (monedaAporte === 'ARS' || cotizacionUsdNumero > 0) &&
     medioAporte.trim() !== '' &&
+    (
+      medioAporte !== 'Mixto' ||
+      (
+        [aporteEfectivoNumero, aporteTransferenciaNumero, aporteEfectivoUsdNumero]
+          .filter((valor) => valor > 0).length >= 2 &&
+        (
+          aporteEfectivoUsdNumero <= 0 ||
+          cotizacionUsdNumero > 0
+        )
+      )
+    ) &&
     !guardando
 
   function agregarGenetica(item: StockGenetica) {
@@ -340,12 +364,39 @@ export default function DispensaPage() {
       }
     }
 
+    if (!medioAporte.trim()) {
+      setError('Elegí el medio del aporte.')
+      return
+    }
+
+    if (medioAporte === 'Mixto') {
+      const componentesPositivos = [
+        aporteEfectivoNumero,
+        aporteTransferenciaNumero,
+        aporteEfectivoUsdNumero,
+      ].filter((valor) => valor > 0).length
+
+      if (componentesPositivos < 2) {
+        setError('En pago mixto completá al menos dos formas de pago.')
+        return
+      }
+
+      if (aporteEfectivoUsdNumero > 0 && cotizacionUsdNumero <= 0) {
+        setError('Ingresá la cotización utilizada para el efectivo USD.')
+        return
+      }
+    }
+
     if (aporteNumero <= 0) {
       setError('Ingresá el aporte realizado.')
       return
     }
 
-    if (monedaAporte === 'USD' && cotizacionUsdNumero <= 0) {
+    if (
+      monedaAporte === 'USD' &&
+      medioAporte !== 'Mixto' &&
+      cotizacionUsdNumero <= 0
+    ) {
       setError('Ingresá la cotización tomada para el USD.')
       return
     }
@@ -373,7 +424,24 @@ export default function DispensaPage() {
               `Equivalente ARS: ${formatearPesos(aporteEquivalenteArs)}`,
               'Medio: Efectivo USD',
             ]
-          : [`Medio: ${medioAporte}`]),
+          : medioAporte === 'Mixto'
+            ? [
+                'Medio: Mixto',
+                ...(aporteTransferenciaNumero > 0
+                  ? [`Transferencia ARS: ${formatearPesos(aporteTransferenciaNumero)}`]
+                  : []),
+                ...(aporteEfectivoNumero > 0
+                  ? [`Efectivo ARS: ${formatearPesos(aporteEfectivoNumero)}`]
+                  : []),
+                ...(aporteEfectivoUsdNumero > 0
+                  ? [
+                      `Efectivo USD: ${formatearAporte(aporteEfectivoUsdNumero, 'USD')}`,
+                      `Cotización: 1 USD = ${formatearPesos(cotizacionUsdNumero)}`,
+                    ]
+                  : []),
+                `Total ARS equivalente: ${formatearPesos(aporteMixtoArs)}`,
+              ]
+            : [`Medio: ${medioAporte}`]),
       ].join('\n')
     )
 
@@ -383,19 +451,46 @@ export default function DispensaPage() {
     setError('')
     setExito(null)
 
-    const resultado = await supabase.rpc('registrar_dispensa_multiple', {
-      p_asociado_id: asociadoSeleccionado.id,
-      p_items: itemsConCantidad.map((item) => ({
-        genetica_id: item.genetica_id,
-        cantidad_g: item.cantidadNumero,
-      })),
-      p_aporte_importe: aporteNumero,
-      p_aporte_moneda: monedaAporte,
-      p_tipo_cambio_ars_usd:
-        monedaAporte === 'USD' ? cotizacionUsdNumero : null,
-      p_medio_pago: medioAporte,
-      p_observaciones: observaciones.trim() || null,
-    })
+    const resultado = await supabase.rpc(
+      'registrar_dispensa_multiple_medios_v2',
+      {
+        p_asociado_id: asociadoSeleccionado.id,
+        p_items: itemsConCantidad.map((item) => ({
+          genetica_id: item.genetica_id,
+          cantidad_g: item.cantidadNumero,
+        })),
+        p_aporte_importe:
+          medioAporte === 'Mixto'
+            ? aporteMixtoArs
+            : aporteNumero,
+        p_aporte_moneda:
+          medioAporte === 'Mixto'
+            ? 'ARS'
+            : monedaAporte,
+        p_tipo_cambio_ars_usd:
+          medioAporte === 'Mixto'
+            ? aporteEfectivoUsdNumero > 0
+              ? cotizacionUsdNumero
+              : null
+            : monedaAporte === 'USD'
+              ? cotizacionUsdNumero
+              : null,
+        p_medio_pago: medioAporte,
+        p_aporte_efectivo_ars:
+          medioAporte === 'Mixto'
+            ? aporteEfectivoNumero
+            : null,
+        p_aporte_transferencia_ars:
+          medioAporte === 'Mixto'
+            ? aporteTransferenciaNumero
+            : null,
+        p_aporte_efectivo_usd:
+          medioAporte === 'Mixto'
+            ? aporteEfectivoUsdNumero
+            : null,
+        p_observaciones: observaciones.trim() || null,
+      }
+    )
 
     if (resultado.error) {
       setError(
@@ -415,7 +510,10 @@ export default function DispensaPage() {
     setAporte('')
     setMonedaAporte('ARS')
     setCotizacionUsd('')
-    setMedioAporte('Transferencia')
+    setMedioAporte('')
+    setAporteEfectivo('')
+    setAporteTransferencia('')
+    setAporteEfectivoUsd('')
     setObservaciones('')
 
     setGuardando(false)
@@ -710,50 +808,93 @@ export default function DispensaPage() {
               <div
                 className={`mt-4 grid gap-3 ${
                   monedaAporte === 'USD'
-                    ? 'xl:grid-cols-[110px_180px_190px_180px_minmax(0,1fr)]'
-                    : 'xl:grid-cols-[110px_190px_200px_minmax(0,1fr)]'
+                    ? 'xl:grid-cols-[100px_170px_185px_175px_minmax(150px,.7fr)]'
+                    : 'xl:grid-cols-[100px_175px_315px_minmax(150px,.65fr)]'
                 }`}
               >
                 <Campo etiqueta="Moneda">
-                  <select
-                    value={monedaAporte}
-                    onChange={(event) => {
-                      const nuevaMoneda = event.target.value as 'ARS' | 'USD'
+                  {medioAporte === 'Mixto' ? (
+                    <div className="flex min-h-[43px] items-center rounded-xl border border-zinc-200 bg-zinc-50 px-3.5 text-sm font-semibold text-zinc-700">
+                      ARS + USD
+                    </div>
+                  ) : (
+                    <select
+                      value={monedaAporte}
+                      onChange={(event) => {
+                        const nuevaMoneda =
+                          event.target.value as 'ARS' | 'USD'
 
-                      setMonedaAporte(nuevaMoneda)
+                        setMonedaAporte(nuevaMoneda)
+                        setAporte('')
+                        setAporteEfectivo('')
+                        setAporteTransferencia('')
+                        setAporteEfectivoUsd('')
 
-                      if (nuevaMoneda === 'USD') {
-                        setMedioAporte('Efectivo USD')
-                      } else {
-                        setMedioAporte('Transferencia')
-                        setCotizacionUsd('')
-                      }
+                        if (nuevaMoneda === 'USD') {
+                          setMedioAporte('Efectivo USD')
+                        } else {
+                          setMedioAporte('')
+                          setCotizacionUsd('')
+                        }
 
-                      setExito(null)
-                    }}
-                    className="campo-compacto"
-                  >
-                    <option value="ARS">ARS</option>
-                    <option value="USD">USD</option>
-                  </select>
+                        setExito(null)
+                      }}
+                      className="campo-compacto"
+                    >
+                      <option value="ARS">ARS</option>
+                      <option value="USD">USD</option>
+                    </select>
+                  )}
                 </Campo>
 
-                <Campo etiqueta="Aporte">
-                  <div className="flex overflow-hidden rounded-xl border border-zinc-200 bg-white transition focus-within:border-emerald-400 focus-within:ring-4 focus-within:ring-emerald-100">
+                <Campo
+                  etiqueta={
+                    medioAporte === 'Mixto'
+                      ? 'Total aporte'
+                      : 'Aporte'
+                  }
+                >
+                  <div
+                    className={`flex overflow-hidden rounded-xl border transition ${
+                      medioAporte === 'Mixto'
+                        ? 'border-emerald-200 bg-emerald-50'
+                        : 'border-zinc-200 bg-white focus-within:border-emerald-400 focus-within:ring-4 focus-within:ring-emerald-100'
+                    }`}
+                  >
                     <span className="flex min-w-[48px] items-center justify-center border-r border-zinc-200 bg-zinc-50 px-3 text-xs font-bold text-zinc-500">
-                      {monedaAporte === 'USD' ? 'USD' : '$'}
+                      {medioAporte === 'Mixto' ? '$' : monedaAporte === 'USD' ? 'USD' : '$'}
                     </span>
 
                     <input
                       type="number"
                       min="0"
                       step={monedaAporte === 'USD' ? '0.01' : '1'}
-                      value={aporte}
+                      value={
+                        medioAporte === 'Mixto'
+                          ? aporteNumero > 0
+                            ? aporteNumero
+                            : ''
+                          : aporte
+                      }
+                      readOnly={
+                        medioAporte === 'Mixto'
+                      }
                       onChange={(event) => {
+                        if (
+                          monedaAporte === 'ARS' &&
+                          medioAporte === 'Mixto'
+                        ) {
+                          return
+                        }
+
                         setAporte(event.target.value)
                         setExito(null)
                       }}
-                      className="min-w-0 flex-1 bg-white px-3.5 py-[0.72rem] text-sm font-semibold text-zinc-950 outline-none"
+                      className={`min-w-0 flex-1 px-3.5 py-[0.72rem] text-sm font-semibold outline-none ${
+                        medioAporte === 'Mixto'
+                          ? 'bg-emerald-50 text-emerald-900'
+                          : 'bg-white text-zinc-950'
+                      }`}
                     />
                   </div>
                 </Campo>
@@ -784,25 +925,49 @@ export default function DispensaPage() {
                   </Campo>
                 )}
 
-                <Campo etiqueta="Medio">
+                <Campo etiqueta="Medio de aporte">
                   {monedaAporte === 'USD' ? (
                     <div className="flex min-h-[43px] items-center rounded-xl border border-zinc-200 bg-zinc-50 px-3.5 text-sm font-semibold text-zinc-700">
                       Efectivo USD
                     </div>
                   ) : (
-                    <select
-                      value={medioAporte}
-                      onChange={(event) =>
-                        setMedioAporte(event.target.value)
-                      }
-                      className="campo-compacto"
-                    >
-                      {MEDIOS_APORTE.map((medio) => (
-                        <option key={medio} value={medio}>
-                          {medio}
-                        </option>
-                      ))}
-                    </select>
+                    <div className="rounded-xl border border-zinc-200 bg-zinc-100 p-1">
+                      <div className="grid grid-cols-3 gap-1">
+                        {['Transferencia', 'Efectivo', 'Mixto'].map((medio) => {
+                          const seleccionado = medioAporte === medio
+
+                          return (
+                            <button
+                              key={medio}
+                              type="button"
+                              onClick={() => {
+                                setMedioAporte(medio)
+
+                                if (medio === 'Mixto') {
+                                  setAporte('')
+                                } else {
+                                  setAporteEfectivo('')
+                                  setAporteTransferencia('')
+                                  setAporteEfectivoUsd('')
+                                  setCotizacionUsd('')
+                                }
+
+                                setExito(null)
+                                setError('')
+                              }}
+                              aria-pressed={seleccionado}
+                              className={`min-h-[39px] rounded-lg px-2 text-xs font-semibold transition ${
+                                seleccionado
+                                  ? 'bg-white text-zinc-950 shadow-sm ring-1 ring-zinc-200'
+                                  : 'text-zinc-500 hover:bg-white/70 hover:text-zinc-800'
+                              }`}
+                            >
+                              {medio}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
                   )}
                 </Campo>
 
@@ -817,6 +982,132 @@ export default function DispensaPage() {
                   />
                 </Campo>
               </div>
+
+              {medioAporte === 'Mixto' && (
+                <div className="mt-3 rounded-xl border border-zinc-200 bg-zinc-50/70 p-3">
+                  <div className="mb-2 flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-zinc-500">
+                        Composición del aporte
+                      </p>
+                      <p className="mt-0.5 text-[11px] text-zinc-400">
+                        Completá al menos dos formas de pago.
+                      </p>
+                    </div>
+
+                    <div className="rounded-lg bg-white px-3 py-1.5 text-right ring-1 ring-zinc-200">
+                      <p className="text-[9px] font-bold uppercase tracking-[0.1em] text-zinc-400">
+                        Total ARS equiv.
+                      </p>
+                      <p className="text-sm font-semibold text-zinc-950">
+                        {formatearPesos(aporteMixtoArs)}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-2 md:grid-cols-3">
+                    <div className="rounded-lg border border-zinc-200 bg-white p-2.5">
+                      <p className="mb-1.5 text-[10px] font-semibold text-zinc-500">
+                        Transferencia ARS
+                      </p>
+                      <div className="flex items-center">
+                        <span className="mr-2 text-xs font-bold text-zinc-400">$</span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="1"
+                          value={aporteTransferencia}
+                          onChange={(event) => {
+                            setAporteTransferencia(event.target.value)
+                            setExito(null)
+                          }}
+                          className="min-w-0 flex-1 bg-transparent text-sm font-semibold text-zinc-950 outline-none"
+                          placeholder="0"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="rounded-lg border border-zinc-200 bg-white p-2.5">
+                      <p className="mb-1.5 text-[10px] font-semibold text-zinc-500">
+                        Efectivo ARS
+                      </p>
+                      <div className="flex items-center">
+                        <span className="mr-2 text-xs font-bold text-zinc-400">$</span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="1"
+                          value={aporteEfectivo}
+                          onChange={(event) => {
+                            setAporteEfectivo(event.target.value)
+                            setExito(null)
+                          }}
+                          className="min-w-0 flex-1 bg-transparent text-sm font-semibold text-zinc-950 outline-none"
+                          placeholder="0"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="rounded-lg border border-zinc-200 bg-white p-2.5">
+                      <div className="mb-1.5 flex items-center justify-between gap-2">
+                        <p className="text-[10px] font-semibold text-zinc-500">
+                          Efectivo USD
+                        </p>
+                        <span className="text-[9px] font-bold uppercase tracking-[0.1em] text-emerald-700">
+                          opcional
+                        </span>
+                      </div>
+
+                      <div className="flex items-center">
+                        <span className="mr-2 text-xs font-bold text-zinc-400">US$</span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={aporteEfectivoUsd}
+                          onChange={(event) => {
+                            setAporteEfectivoUsd(event.target.value)
+                            setExito(null)
+                          }}
+                          className="min-w-0 flex-1 bg-transparent text-sm font-semibold text-zinc-950 outline-none"
+                          placeholder="0"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {aporteEfectivoUsdNumero > 0 && (
+                    <div className="mt-2 flex flex-col gap-1.5 rounded-lg border border-sky-100 bg-sky-50/60 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
+                      <span className="text-[11px] font-medium text-zinc-600">
+                        Cotización usada para el efectivo USD
+                      </span>
+
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-semibold text-zinc-400">
+                          1 USD =
+                        </span>
+                        <div className="flex w-[150px] overflow-hidden rounded-lg border border-zinc-200 bg-white">
+                          <span className="flex items-center border-r border-zinc-200 bg-zinc-50 px-2 text-xs font-bold text-zinc-400">
+                            $
+                          </span>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={cotizacionUsd}
+                            onChange={(event) => {
+                              setCotizacionUsd(event.target.value)
+                              setExito(null)
+                            }}
+                            className="min-w-0 flex-1 bg-white px-2.5 py-1.5 text-sm font-semibold text-zinc-950 outline-none"
+                            placeholder="0"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {monedaAporte === 'USD' &&
                 aporteNumero > 0 &&
