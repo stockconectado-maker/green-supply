@@ -190,6 +190,39 @@ export default function DashboardGreenSupply() {
   const dispensasSemanaGramos = datos.dispensasSemana?.reduce((sum, x) => sum + numero(x.cantidad_g), 0) ?? null
   const asociadosAtendidosSemana = datos.dispensasSemana === null ? null : new Set(datos.dispensasSemana.map(x => x.asociado_id)).size
 
+  const geneticasConStock =
+    datos.existencias === null
+      ? null
+      : datos.existencias.filter(x => numero(x.stock_disponible_g) > 0).length
+
+  const plantasActivas =
+    datos.ciclos === null
+      ? null
+      : datos.ciclos.reduce((sum, ciclo) => sum + numero(ciclo.cantidad_total), 0)
+
+  const proximoCiclo =
+    datos.ciclos === null
+      ? null
+      : [...datos.ciclos]
+          .filter(ciclo => Boolean(ciclo.fecha_corte_planificada))
+          .sort((a, b) =>
+            String(a.fecha_corte_planificada).localeCompare(
+              String(b.fecha_corte_planificada)
+            )
+          )[0] ?? null
+
+  const proximaSala =
+    proximoCiclo && datos.salas
+      ? datos.salas.find(sala => sala.id === proximoCiclo.sala_id) ?? null
+      : null
+
+  const proximoDetalle =
+    proximoCiclo && datos.detallesCiclos
+      ? datos.detallesCiclos.find(
+          detalle => detalle.ciclo_id === proximoCiclo.ciclo_id
+        ) ?? null
+      : null
+
   return (
     <main className="min-h-screen bg-[#f5f6f7]">
       <div className="mx-auto max-w-[1500px] px-5 py-6 lg:px-7">
@@ -213,11 +246,78 @@ export default function DashboardGreenSupply() {
           </div>
         )}
 
-        <section className="grid overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm sm:grid-cols-2 xl:grid-cols-4">
-          <Indicador titulo="Asociados activos" valor={cargando ? '…' : asociadosActivos === null ? '—' : entero(asociadosActivos.length)} detalle={pendientesAlta === null ? 'Pendientes no disponibles' : `${entero(pendientesAlta.length)} en proceso`} />
-          <Indicador titulo="Stock disponible" valor={cargando ? '…' : stockGramos === null ? '—' : gramos(stockGramos)} detalle="Existencia calculada desde Stock" />
-          <Indicador titulo="Salas con ciclo activo" valor={cargando ? '…' : datos.ciclos === null ? '—' : entero(salasConCiclo)} detalle={salasNoArchivadas === null ? 'Salas no disponibles' : `de ${salasNoArchivadas.length} salas no archivadas`} />
-          <Indicador titulo="Dispensas de hoy" valor={cargando ? '…' : datos.dispensas === null ? '—' : entero(datos.dispensas.length)} detalle={dispensasGramos === null ? 'Volumen no disponible' : `${gramos(dispensasGramos)} dispensados`} />
+        <section className="grid overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+          <Indicador
+            titulo="Asociados activos"
+            valor={cargando ? '…' : asociadosActivos === null ? '—' : entero(asociadosActivos.length)}
+            detalle={pendientesAlta === null ? 'Pendientes no disponibles' : `${entero(pendientesAlta.length)} en proceso`}
+          />
+
+          <Indicador
+            titulo="Stock disponible"
+            valor={cargando ? '…' : stockGramos === null ? '—' : gramos(stockGramos)}
+            detalle={
+              geneticasConStock === null
+                ? 'Genéticas no disponibles'
+                : `${entero(geneticasConStock)} genéticas con stock`
+            }
+          />
+
+          <Indicador
+            titulo="Cultivo activo"
+            valor={cargando ? '…' : datos.ciclos === null ? '—' : entero(salasConCiclo)}
+            detalle={
+              plantasActivas === null
+                ? 'Plantas no disponibles'
+                : `${entero(plantasActivas)} plantas en curso`
+            }
+          />
+
+          <Indicador
+            titulo="Próximo corte"
+            valor={
+              cargando
+                ? '…'
+                : proximoCiclo?.fecha_corte_planificada
+                  ? fechaCorta(proximoCiclo.fecha_corte_planificada)
+                  : '—'
+            }
+            detalle={
+              proximoCiclo
+                ? `${proximaSala?.nombre ?? 'Sala'}${
+                    numero(proximoDetalle?.meta_produccion_g) > 0
+                      ? ` · ${gramos(numero(proximoDetalle?.meta_produccion_g))} estimados`
+                      : ''
+                  }`
+                : 'Sin corte planificado'
+            }
+          />
+
+          <Indicador
+            titulo="Dispensas de hoy"
+            valor={cargando ? '…' : datos.dispensas === null ? '—' : entero(datos.dispensas.length)}
+            detalle={
+              dispensasGramos === null
+                ? 'Volumen no disponible'
+                : `${gramos(dispensasGramos)} dispensados`
+            }
+          />
+
+          <Indicador
+            titulo="Últimos 7 días"
+            valor={
+              cargando
+                ? '…'
+                : dispensasSemanaGramos === null
+                  ? '—'
+                  : gramos(dispensasSemanaGramos)
+            }
+            detalle={
+              asociadosAtendidosSemana === null
+                ? 'Actividad no disponible'
+                : `${entero(asociadosAtendidosSemana)} asociados atendidos`
+            }
+          />
         </section>
 
         <div className="mt-4 grid items-start gap-4 xl:grid-cols-[.8fr_1.2fr]">
@@ -362,7 +462,19 @@ export default function DashboardGreenSupply() {
 }
 
 function Indicador({ titulo, valor, detalle }: { titulo: string, valor: string, detalle: string }) {
-  return <div className="border-b border-zinc-100 px-4 py-4 sm:[&:nth-child(odd)]:border-r xl:border-b-0 xl:border-r xl:last:border-r-0"><p className="text-[10px] font-bold uppercase tracking-[.08em] text-zinc-400">{titulo}</p><p className="mt-1 text-2xl font-semibold tabular-nums tracking-tight text-zinc-950">{valor}</p><p className="mt-1 text-xs text-zinc-500">{detalle}</p></div>
+  return (
+    <div className="min-w-0 border-b border-zinc-100 px-3.5 py-3 sm:border-r lg:[&:nth-child(3n)]:border-r-0 xl:border-b-0 xl:[&:nth-child(3n)]:border-r xl:last:border-r-0">
+      <p className="truncate text-[9px] font-bold uppercase tracking-[.09em] text-zinc-400">
+        {titulo}
+      </p>
+      <p className="mt-1 truncate text-xl font-semibold tabular-nums tracking-tight text-zinc-950">
+        {valor}
+      </p>
+      <p className="mt-1 truncate text-[10px] text-zinc-500" title={detalle}>
+        {detalle}
+      </p>
+    </div>
+  )
 }
 function Titulo({ titulo, subtitulo, href, textoLink }: { titulo: string, subtitulo: string, href: string, textoLink: string }) {
   return <div className="flex items-start justify-between gap-3"><div><h2 className="text-base font-semibold text-zinc-950">{titulo}</h2><p className="mt-1 text-xs text-zinc-500">{subtitulo}</p></div><Link href={href} className="shrink-0 text-xs font-semibold text-emerald-700 hover:text-emerald-800">{textoLink}</Link></div>
