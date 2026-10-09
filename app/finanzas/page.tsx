@@ -2714,6 +2714,68 @@ export default function FinanzasPage() {
 
 
 
+            <section className="mt-4 overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
+              <div className="flex flex-col gap-2 border-b border-zinc-100 px-4 py-3 sm:flex-row sm:items-center sm:justify-between lg:px-5">
+                <div>
+                  <p className="text-[9px] font-bold uppercase tracking-[0.1em] text-zinc-400">
+                    Referencia histórica
+                  </p>
+
+                  <h2 className="mt-0.5 text-base font-semibold text-zinc-950">
+                    Aportes iniciales de socios
+                  </h2>
+                </div>
+
+                <span className="w-fit rounded-full bg-zinc-100 px-2.5 py-1 text-[10px] font-semibold text-zinc-500">
+                  Hasta 29/09/2026
+                </span>
+              </div>
+
+              <div className="grid sm:grid-cols-2 xl:grid-cols-4">
+                <div className="border-b border-zinc-100 px-4 py-3 sm:border-r xl:border-b-0 lg:px-5">
+                  <p className="text-[9px] font-bold uppercase tracking-[0.08em] text-zinc-400">
+                    Sebastián
+                  </p>
+                  <p className="mt-1 text-lg font-semibold tabular-nums tracking-tight text-zinc-950">
+                    $17.361.800
+                  </p>
+                </div>
+
+                <div className="border-b border-zinc-100 px-4 py-3 xl:border-b-0 xl:border-r lg:px-5">
+                  <p className="text-[9px] font-bold uppercase tracking-[0.08em] text-zinc-400">
+                    Gonzalo
+                  </p>
+                  <p className="mt-1 text-lg font-semibold tabular-nums tracking-tight text-zinc-950">
+                    $14.209.900
+                  </p>
+                </div>
+
+                <div className="border-b border-zinc-100 px-4 py-3 sm:border-r xl:border-b-0 lg:px-5">
+                  <p className="text-[9px] font-bold uppercase tracking-[0.08em] text-zinc-400">
+                    Maxi
+                  </p>
+                  <p className="mt-1 text-lg font-semibold tabular-nums tracking-tight text-zinc-950">
+                    $16.038.100
+                  </p>
+                </div>
+
+                <div className="px-4 py-3 lg:px-5">
+                  <p className="text-[9px] font-bold uppercase tracking-[0.08em] text-zinc-400">
+                    Total aportado
+                  </p>
+                  <p className="mt-1 text-lg font-semibold tabular-nums tracking-tight text-emerald-700">
+                    $47.609.800
+                  </p>
+                </div>
+              </div>
+
+              <div className="border-t border-zinc-100 bg-zinc-50/60 px-4 py-2.5 text-[10px] leading-4 text-zinc-400 lg:px-5">
+                Referencia histórica inicial. Este bloque es informativo, no se actualiza automáticamente y no representa el saldo actual de caja.
+              </div>
+            </section>
+
+
+
             <section className="mt-4 flex flex-col gap-2 rounded-xl border border-zinc-200 bg-white px-4 py-3 text-[10px] text-zinc-400 shadow-sm sm:flex-row sm:items-center sm:justify-between">
 
               <span>
@@ -3000,64 +3062,27 @@ export default function FinanzasPage() {
 
             >
 
-              <div className="relative">
-
-                <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-xs font-semibold text-zinc-400">
-
+              <div className="flex overflow-hidden rounded-xl border border-zinc-200 bg-white transition focus-within:border-emerald-400 focus-within:ring-4 focus-within:ring-emerald-100">
+                <span className="flex shrink-0 items-center justify-center border-r border-zinc-200 bg-zinc-50 px-3 text-xs font-semibold text-zinc-500">
                   {monedaForm === 'USD'
-
                     ? 'US$'
-
                     : '$'}
-
                 </span>
 
-
-
                 <input
-
                   type="number"
-
                   min="0"
-
                   step={
-
                     monedaForm === 'USD'
-
                       ? '0.01'
-
                       : '1'
-
                   }
-
-                  value={
-
-                    importeForm
-
-                  }
-
+                  value={importeForm}
                   onChange={(event) =>
-
-                    setImporteForm(
-
-                      event.target.value
-
-                    )
-
+                    setImporteForm(event.target.value)
                   }
-
-                  className={
-
-                    monedaForm === 'USD'
-
-                      ? 'campo-finanzas pl-12'
-
-                      : 'campo-finanzas pl-8'
-
-                  }
-
+                  className="min-w-0 flex-1 bg-white px-3.5 py-[0.72rem] text-sm text-zinc-950 outline-none"
                 />
-
               </div>
 
             </Campo>
@@ -3072,46 +3097,22 @@ export default function FinanzasPage() {
 
               >
 
-                <div className="relative">
-
-                  <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-xs font-semibold text-zinc-400">
-
+                <div className="flex overflow-hidden rounded-xl border border-zinc-200 bg-white transition focus-within:border-emerald-400 focus-within:ring-4 focus-within:ring-emerald-100">
+                  <span className="flex shrink-0 items-center justify-center border-r border-zinc-200 bg-zinc-50 px-3 text-xs font-semibold text-zinc-500">
                     $
-
                   </span>
 
-
-
                   <input
-
                     type="number"
-
                     min="0"
-
                     step="0.01"
-
-                    value={
-
-                      tipoCambioForm
-
-                    }
-
+                    value={tipoCambioForm}
                     onChange={(event) =>
-
-                      setTipoCambioForm(
-
-                        event.target.value
-
-                      )
-
+                      setTipoCambioForm(event.target.value)
                     }
-
                     placeholder="Ej. 1500"
-
-                    className="campo-finanzas pl-8"
-
+                    className="min-w-0 flex-1 bg-white px-3.5 py-[0.72rem] text-sm text-zinc-950 outline-none"
                   />
-
                 </div>
 
               </Campo>
@@ -3512,48 +3513,25 @@ export default function FinanzasPage() {
 
           >
 
-            <div className="relative">
-
-              <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-semibold text-zinc-400">
-
+            <div className="flex overflow-hidden rounded-xl border border-zinc-200 bg-white transition focus-within:border-emerald-400 focus-within:ring-4 focus-within:ring-emerald-100">
+              <span className="flex shrink-0 items-center justify-center border-r border-zinc-200 bg-zinc-50 px-3 text-sm font-semibold text-zinc-500">
                 $
-
               </span>
-
-
 
               <input
-
                 type="number"
-
                 min="0"
-
                 step="1"
-
                 value={costoForm}
-
                 onChange={(event) =>
-
-                  setCostoForm(
-
-                    event.target.value
-
-                  )
-
+                  setCostoForm(event.target.value)
                 }
-
-                className="campo-finanzas pl-8 pr-12"
-
+                className="min-w-0 flex-1 bg-white px-3.5 py-[0.72rem] text-sm text-zinc-950 outline-none"
               />
 
-
-
-              <span className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-semibold text-zinc-400">
-
+              <span className="flex shrink-0 items-center border-l border-zinc-200 bg-zinc-50 px-3 text-xs font-semibold text-zinc-500">
                 / g
-
               </span>
-
             </div>
 
           </Campo>
