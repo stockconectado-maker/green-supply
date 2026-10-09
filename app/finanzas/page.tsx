@@ -466,6 +466,16 @@ export default function FinanzasPage() {
 
   const [
 
+    tipoCambioForm,
+
+    setTipoCambioForm,
+
+  ] = useState('')
+
+
+
+  const [
+
     medioForm,
 
     setMedioForm,
@@ -1402,6 +1412,8 @@ export default function FinanzasPage() {
 
     setMonedaForm('ARS')
 
+    setTipoCambioForm('')
+
     setMedioForm(
 
       'Transferencia'
@@ -1496,6 +1508,36 @@ export default function FinanzasPage() {
 
 
 
+    const tipoCambio =
+
+      numeroPositivo(
+
+        tipoCambioForm
+
+      )
+
+
+
+    if (
+
+      monedaForm === 'USD' &&
+
+      tipoCambio <= 0
+
+    ) {
+
+      setError(
+
+        'Ingresá la cotización ARS/USD utilizada.'
+
+      )
+
+      return
+
+    }
+
+
+
     setGuardando(true)
 
     setError('')
@@ -1531,6 +1573,14 @@ export default function FinanzasPage() {
           p_moneda:
 
             monedaForm,
+
+          p_tipo_cambio_ars_usd:
+
+            monedaForm === 'USD'
+
+              ? tipoCambio
+
+              : null,
 
           p_medio_pago:
 
@@ -2872,7 +2922,19 @@ export default function FinanzasPage() {
 
 
 
-          <div className="mt-4 grid gap-4 sm:grid-cols-3">
+          <div
+
+            className={`mt-4 grid gap-4 ${
+
+              monedaForm === 'USD'
+
+                ? 'sm:grid-cols-2 lg:grid-cols-4'
+
+                : 'sm:grid-cols-3'
+
+            }`}
+
+          >
 
             <Campo
 
@@ -2895,6 +2957,8 @@ export default function FinanzasPage() {
                       | 'USD'
 
                   setMonedaForm(moneda)
+
+                  setTipoCambioForm('')
 
                   setMedioForm(
 
@@ -3000,6 +3064,62 @@ export default function FinanzasPage() {
 
 
 
+            {monedaForm === 'USD' && (
+
+              <Campo
+
+                titulo="Cotización ARS/USD"
+
+              >
+
+                <div className="relative">
+
+                  <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-xs font-semibold text-zinc-400">
+
+                    $
+
+                  </span>
+
+
+
+                  <input
+
+                    type="number"
+
+                    min="0"
+
+                    step="0.01"
+
+                    value={
+
+                      tipoCambioForm
+
+                    }
+
+                    onChange={(event) =>
+
+                      setTipoCambioForm(
+
+                        event.target.value
+
+                      )
+
+                    }
+
+                    placeholder="Ej. 1500"
+
+                    className="campo-finanzas pl-8"
+
+                  />
+
+                </div>
+
+              </Campo>
+
+            )}
+
+
+
             <Campo
 
               titulo="Medio"
@@ -3061,6 +3181,38 @@ export default function FinanzasPage() {
             </Campo>
 
           </div>
+
+
+
+          {monedaForm === 'USD' &&
+
+            numeroPositivo(importeForm) > 0 &&
+
+            numeroPositivo(tipoCambioForm) > 0 && (
+
+              <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+
+                <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-emerald-700">
+
+                  Equivalente registrado
+
+                </p>
+
+                <p className="mt-1 text-sm font-semibold text-zinc-950">
+
+                  {formatearPesos(
+
+                    numeroPositivo(importeForm) *
+
+                      numeroPositivo(tipoCambioForm)
+
+                  )}
+
+                </p>
+
+              </div>
+
+            )}
 
 
 
