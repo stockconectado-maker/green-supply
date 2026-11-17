@@ -59,6 +59,16 @@ type ProduccionForm = {
   observaciones: string
 }
 
+type IngresoParcial = {
+  id: number
+  produccion_id: number
+  lote_id: number
+  cantidad_g: number | string
+  fecha_ingreso: string
+  observaciones: string | null
+  lotes?: { codigo_lote: string } | null
+}
+
 type Props = {
   salaId: number
   salaNombre?: string
@@ -84,96 +94,68 @@ export default function Produccion({
   >({})
   const [cerrandoId, setCerrandoId] =
     useState<number | null>(null)
+  const [ciclosDisponibles, setCiclosDisponibles] = useState<CicloResumen[]>([])
+  const [cicloSeleccionadoId, setCicloSeleccionadoId] = useState<number | null>(null)
+  const [ingresos, setIngresos] = useState<IngresoParcial[]>([])
+  const [solicitudesPendientes, setSolicitudesPendientes] = useState<Record<number, string>>({})
 
   useEffect(() => {
-    cargar()
+    setCicloSeleccionadoId(null)
   }, [salaId])
+
+  useEffect(() => {
+    void cargar()
+  }, [salaId, cicloSeleccionadoId])
 
   async function cargar() {
     setCargando(true)
     setError('')
 
-    let cicloActual: CicloResumen | null = null
-
-    const activo = await supabase
+    const ciclosRes = await supabase
       .from('vista_ciclos_cultivo')
       .select('*')
       .eq('sala_id', salaId)
-      .eq('estado', 'Activo')
-      .maybeSingle()
+      .order('ciclo_id', { ascending: false })
 
-    if (activo.error) {
-      setError(
-        describirErrorSupabase(
-          activo.error,
-          'No se pudo cargar el ciclo.'
-        )
-      )
+    if (ciclosRes.error) {
+      setError(describirErrorSupabase(ciclosRes.error, 'No se pudieron cargar los ciclos.'))
       setCargando(false)
       return
     }
 
-    cicloActual =
-      (activo.data as CicloResumen | null) ?? null
+    const ciclosSala = (ciclosRes.data ?? []) as CicloResumen[]
+    const produccionesRes = await supabase
+      .from('vista_producciones_ciclo')
+      .select('ciclo_id, estado')
+      .eq('sala_id', salaId)
 
-    // Si el ciclo ya terminó pero todavía hay producción abierta,
-    // mantenemos la pantalla accesible.
-    if (!cicloActual) {
-      const abierta = await supabase
-        .from('vista_producciones_ciclo')
-        .select('ciclo_id')
-        .eq('sala_id', salaId)
-        .neq('estado', 'Cerrada')
-        .order('created_at', {
-          ascending: false,
-        })
-        .limit(1)
-        .maybeSingle()
-
-      if (abierta.error) {
-        setError(
-          describirErrorSupabase(
-            abierta.error,
-            'No se pudo localizar la producción abierta.'
-          )
-        )
-        setCargando(false)
-        return
-      }
-
-      if (abierta.data?.ciclo_id) {
-        const cicloAnterior = await supabase
-          .from('vista_ciclos_cultivo')
-          .select('*')
-          .eq(
-            'ciclo_id',
-            Number(abierta.data.ciclo_id)
-          )
-          .maybeSingle()
-
-        if (cicloAnterior.error) {
-          setError(
-            describirErrorSupabase(
-              cicloAnterior.error,
-              'No se pudo cargar el ciclo de producción.'
-            )
-          )
-          setCargando(false)
-          return
-        }
-
-        cicloActual =
-          (cicloAnterior.data as
-            | CicloResumen
-            | null) ?? null
-      }
+    if (produccionesRes.error) {
+      setError(describirErrorSupabase(produccionesRes.error, 'No se pudieron localizar las producciones.'))
+      setCargando(false)
+      return
     }
+
+    const idsPendientes = new Set(
+      (produccionesRes.data ?? [])
+        .filter((p) => p.estado !== 'Cerrada')
+        .map((p) => Number(p.ciclo_id))
+    )
+    const elegibles = ciclosSala.filter(
+      (c) => c.estado === 'Activo' || idsPendientes.has(c.ciclo_id)
+    )
+    setCiclosDisponibles(elegibles)
+    const cicloActual = elegibles.find((c) => c.ciclo_id === cicloSeleccionadoId)
+      ?? elegibles.find((c) => c.estado === 'Finalizado')
+      ?? elegibles[0]
+      ?? null
+    setCicloSeleccionadoId(cicloActual?.ciclo_id ?? null)
 
     setCiclo(cicloActual)
 
     if (!cicloActual) {
       setProducciones([])
       setForms({})
+      setIngresos([])
       setCargando(false)
       return
     }
@@ -218,6 +200,17 @@ export default function Produccion({
 
     setProducciones(registros)
 
+    const ingresoRes = await supabase
+      .from('produccion_ingresos')
+      .select('id, produccion_id, lote_id, cantidad_g, fecha_ingreso, observaciones, lotes(codigo_lote)')
+      .in('produccion_id', registros.map((p) => p.produccion_id).length
+        ? registros.map((p) => p.produccion_id) : [-1])
+      .order('id', { ascending: false })
+    if (ingresoRes.error) {
+      setError(describirErrorSupabase(ingresoRes.error, 'No se pudieron cargar los ingresos parciales.'))
+    }
+    setIngresos((ingresoRes.data ?? []) as unknown as IngresoParcial[])
+
     const hoy = fechaHoyLocal()
     const nuevosForms: Record<
       number,
@@ -237,9 +230,7 @@ export default function Produccion({
         fecha_fin_secado:
           item.fecha_fin_secado ?? hoy,
         peso_seco_g:
-          item.peso_seco_g === null
-            ? ''
-            : String(item.peso_seco_g),
+          '',
         observaciones:
           item.observaciones ?? '',
       }
@@ -261,12 +252,13 @@ export default function Produccion({
 
   const pesoSecoTotal = useMemo(
     () =>
-      producciones.reduce(
-        (total, item) =>
-          total + numero(item.peso_seco_g),
-        0
-      ),
-    [producciones]
+      producciones.reduce((total, item) => {
+        const parciales = ingresos.filter((i) => i.produccion_id === item.produccion_id)
+        return total + (parciales.length
+          ? parciales.reduce((s, i) => s + numero(i.cantidad_g), 0)
+          : item.lote_id ? numero(item.peso_seco_g) : 0)
+      }, 0),
+    [producciones, ingresos]
   )
 
   const cerradas = producciones.filter(
@@ -310,27 +302,12 @@ export default function Produccion({
         actual.peso_humedo_g
       )
 
-    const pesoSeco =
-      numeroOpcionalPositivo(
-        actual.peso_seco_g
-      )
-
     if (
       actual.peso_humedo_g.trim() &&
       pesoHumedo === null
     ) {
       setError(
         `${item.genetica}: el peso húmedo debe ser mayor a 0 o quedar vacío.`
-      )
-      return false
-    }
-
-    if (
-      actual.peso_seco_g.trim() &&
-      pesoSeco === null
-    ) {
-      setError(
-        `${item.genetica}: el peso seco debe ser mayor a 0.`
       )
       return false
     }
@@ -368,12 +345,7 @@ export default function Produccion({
       .update({
         fecha_corte: fechaCorte,
         peso_humedo_g: pesoHumedo,
-        fecha_fin_secado:
-          pesoSeco !== null ||
-          actual.fecha_fin_secado
-            ? fechaFinSecado
-            : null,
-        peso_seco_g: pesoSeco,
+        fecha_fin_secado: actual.fecha_fin_secado ? fechaFinSecado : null,
         observaciones:
           actual.observaciones.trim() || null,
       })
@@ -425,15 +397,15 @@ export default function Produccion({
 
     if (pesoSeco === null) {
       setError(
-        `${item.genetica}: cargá el peso seco final para poder cerrar y generar el lote.`
+        `${item.genetica}: ingresá los gramos de esta partida.`
       )
       return
     }
 
     const confirmar = window.confirm(
-      `Cerrar ${item.genetica} con ${formatearPeso(
+      `Registrar un ingreso de ${item.genetica} de ${formatearPeso(
         pesoSeco
-      )} secos y generar automáticamente el lote en Stock?`
+      )} y generar un lote disponible en Stock?`
     )
 
     if (!confirmar) return
@@ -451,11 +423,15 @@ export default function Produccion({
       return
     }
 
+    const solicitudId = solicitudesPendientes[item.produccion_id] ?? crypto.randomUUID()
+    setSolicitudesPendientes((prev) => ({ ...prev, [item.produccion_id]: solicitudId }))
+
     const resultado = await supabase.rpc(
-      'cerrar_produccion',
+      'registrar_ingreso_parcial_produccion',
       {
-        p_produccion_id:
-          item.produccion_id,
+        p_produccion_id: item.produccion_id,
+        p_cantidad_g: pesoSeco,
+        p_solicitud_id: solicitudId,
         p_observaciones:
           form.observaciones.trim() || null,
       }
@@ -465,7 +441,7 @@ export default function Produccion({
       setError(
         describirErrorSupabase(
           resultado.error,
-          'No se pudo cerrar la producción ni generar el lote.'
+          'No se pudo registrar el ingreso. No cambies la cantidad antes de reintentar.'
         )
       )
       setCerrandoId(null)
@@ -473,6 +449,26 @@ export default function Produccion({
     }
 
     setCerrandoId(null)
+    setSolicitudesPendientes((prev) => {
+      const copia = { ...prev }
+      delete copia[item.produccion_id]
+      return copia
+    })
+    await cargar()
+  }
+
+  async function cerrarProcesamiento(item: Produccion) {
+    if (!window.confirm(`¿Finalizar definitivamente el procesamiento de ${item.genetica}? Después no se podrán registrar más partidas.`)) return
+    setCerrandoId(item.produccion_id)
+    setError('')
+    const res = await supabase.rpc('cerrar_procesamiento_produccion', {
+      p_produccion_id: item.produccion_id,
+    })
+    setCerrandoId(null)
+    if (res.error) {
+      setError(describirErrorSupabase(res.error, 'No se pudo cerrar el procesamiento.'))
+      return
+    }
     await cargar()
   }
 
@@ -512,6 +508,32 @@ export default function Produccion({
     <div className="space-y-5">
       {error && <ErrorBox texto={error} />}
 
+      <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+        <label htmlFor="ciclo-produccion" className="mb-2 block text-sm font-semibold text-zinc-700">
+          Cosecha / ciclo de trabajo
+        </label>
+        <select
+          id="ciclo-produccion"
+          value={ciclo.ciclo_id}
+          onChange={(e) => {
+            setCicloSeleccionadoId(Number(e.target.value))
+            // cargar() usa el identificador seleccionado de la proxima renderizacion.
+          }}
+          className="w-full rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm text-zinc-900"
+        >
+          {ciclosDisponibles.map((c) => (
+            <option key={c.ciclo_id} value={c.ciclo_id}>
+              {c.codigo_cosecha} · Ciclo {c.numero_ciclo} · {c.estado}
+            </option>
+          ))}
+        </select>
+        {ciclo.estado === 'Activo' && (
+          <p className="mt-2 text-sm text-amber-700">
+            Primero finalizá la cosecha en Cultivo. Los ingresos a Stock se habilitan después del corte.
+          </p>
+        )}
+      </section>
+
       <CabeceraProduccion
         ciclo={ciclo}
         salaNombre={salaNombre}
@@ -532,9 +554,8 @@ export default function Produccion({
 
             <p className="mt-1 max-w-2xl text-sm leading-6 text-zinc-500">
               Completá los datos directamente.
-              El peso húmedo es opcional; el peso
-              seco es el único dato necesario para
-              habilitar el cierre y generar el lote.
+              Registrá cada partida procesada por separado. Cada ingreso confirmado
+              genera un nuevo lote disponible en Stock.
             </p>
           </div>
 
@@ -581,6 +602,9 @@ export default function Produccion({
               onCerrar={() =>
                 cerrarProduccion(item)
               }
+              onFinalizar={() => cerrarProcesamiento(item)}
+              ingresos={ingresos.filter((i) => i.produccion_id === item.produccion_id)}
+              permiteIngresos={ciclo.estado === 'Finalizado'}
               guardando={
                 Boolean(
                   guardando[
@@ -609,6 +633,7 @@ export default function Produccion({
       <ResumenCiclo
         producciones={producciones}
         metaProduccion={metaProduccion}
+        ingresos={ingresos}
       />
     </div>
   )
@@ -776,6 +801,9 @@ function TarjetaGenetica({
   onChange,
   onBlur,
   onCerrar,
+  onFinalizar,
+  ingresos,
+  permiteIngresos,
   guardando,
   cerrando,
 }: {
@@ -787,6 +815,9 @@ function TarjetaGenetica({
   ) => void
   onBlur: () => void
   onCerrar: () => void
+  onFinalizar: () => void
+  ingresos: IngresoParcial[]
+  permiteIngresos: boolean
   guardando: boolean
   cerrando: boolean
 }) {
@@ -816,7 +847,7 @@ function TarjetaGenetica({
               Lote
             </p>
             <p className="mt-1 text-2xl font-semibold tracking-tight text-emerald-950">
-              {item.codigo_lote ?? 'GS-###'}
+              {item.codigo_lote ?? `${ingresos.length} lotes`}
             </p>
           </div>
         </div>
@@ -855,7 +886,7 @@ function TarjetaGenetica({
         </div>
 
         <div className="border-t border-emerald-100 bg-emerald-50/40 px-5 py-3 text-sm font-medium text-emerald-800">
-          Ingresado automáticamente a Stock ·{' '}
+          Ingresado a Stock ·{' '}
           {formatearPeso(
             numero(item.peso_seco_g)
           )}
@@ -869,7 +900,7 @@ function TarjetaGenetica({
       form.peso_seco_g
     )
 
-  const listo = pesoSeco !== null
+  const listo = pesoSeco !== null && permiteIngresos
 
   const pesoHumedo =
     numeroOpcionalPositivo(
@@ -966,8 +997,8 @@ function TarjetaGenetica({
           />
 
           <CampoPeso
-            label="Peso seco final"
-            ayuda="Necesario para cerrar"
+            label="Gramos de esta partida"
+            ayuda="Cada confirmación crea un lote nuevo"
             value={form.peso_seco_g}
             onChange={(valor) =>
               onChange(
@@ -1024,7 +1055,7 @@ function TarjetaGenetica({
                 ? formatearPeso(
                     pesoSeco
                   )
-                : 'Pendiente'
+                : 'Sin partida cargada'
             }
             destacado={listo}
           />
@@ -1041,12 +1072,12 @@ function TarjetaGenetica({
         <div>
           <p className="text-sm font-semibold text-zinc-800">
             {listo
-              ? `Peso seco cargado: ${formatearPeso(pesoSeco ?? 0)}`
-              : 'Ingresá el peso seco para habilitar el cierre'}
+              ? `Partida a ingresar: ${formatearPeso(pesoSeco ?? 0)}`
+              : 'Ingresá los gramos de la próxima partida'}
           </p>
 
           <p className="mt-0.5 text-xs text-zinc-500">
-            Podés seguir corrigiendo cualquier dato hasta cerrar. Al cerrar se genera GS-### y entra directo a Stock.
+            Cada partida genera un lote independiente. El cierre final se realiza por separado.
           </p>
         </div>
 
@@ -1058,8 +1089,33 @@ function TarjetaGenetica({
         >
           {cerrando
             ? 'Generando lote...'
-            : 'Cerrar y generar lote'}
+            : 'Ingresar a Stock'}
         </button>
+      </div>
+      <div className="border-t border-zinc-100 px-5 py-4">
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <p className="text-sm font-semibold text-zinc-800">Ingresos confirmados</p>
+            <p className="text-xs text-zinc-500">
+              {ingresos.length} partidas · {formatearPeso(ingresos.reduce((s, i) => s + numero(i.cantidad_g), 0))}
+            </p>
+          </div>
+          <button type="button" onClick={onFinalizar}
+            disabled={cerrando || guardando || ingresos.length === 0}
+            className="rounded-xl border border-emerald-700 px-4 py-2 text-xs font-semibold text-emerald-800 disabled:opacity-40">
+            Finalizar procesamiento
+          </button>
+        </div>
+        {ingresos.length > 0 && (
+          <ul className="mt-3 space-y-2">
+            {ingresos.map((i) => (
+              <li key={i.id} className="flex justify-between rounded-lg bg-zinc-50 px-3 py-2 text-xs text-zinc-700">
+                <span>{i.fecha_ingreso} · {i.lotes?.codigo_lote ?? `Lote #${i.lote_id}`}</span>
+                <strong>{formatearPeso(numero(i.cantidad_g))}</strong>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     </article>
   )
@@ -1068,13 +1124,19 @@ function TarjetaGenetica({
 function ResumenCiclo({
   producciones,
   metaProduccion,
+  ingresos,
 }: {
   producciones: Produccion[]
   metaProduccion: number
+  ingresos: IngresoParcial[]
 }) {
   const pesoSeco = producciones.reduce(
-    (total, item) =>
-      total + numero(item.peso_seco_g),
+    (total, item) => {
+      const parciales = ingresos.filter((i) => i.produccion_id === item.produccion_id)
+      return total + (parciales.length
+        ? parciales.reduce((s, i) => s + numero(i.cantidad_g), 0)
+        : item.lote_id ? numero(item.peso_seco_g) : 0)
+    },
     0
   )
 
@@ -1109,7 +1171,7 @@ function ResumenCiclo({
 
         <span className="rounded-full bg-zinc-100 px-3 py-1.5 text-sm font-semibold text-zinc-600">
           {cerradas}/{producciones.length}{' '}
-          lotes cerrados
+          genéticas finalizadas
         </span>
       </div>
 
