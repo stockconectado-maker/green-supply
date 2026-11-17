@@ -179,6 +179,7 @@ export default function SalaFichaPage() {
   const canvasRef = useRef<HTMLDivElement | null>(null)
 
   const [tab, setTab] = useState<Tab>('resumen')
+  const [versionCultivo, setVersionCultivo] = useState(0)
   const [sala, setSala] = useState<Sala | null>(null)
   const [camas, setCamas] = useState<CamaPlano[]>([])
   const [elementos, setElementos] = useState<ElementoPlano[]>([])
@@ -3049,9 +3050,14 @@ export default function SalaFichaPage() {
         {tab === 'cultivo' && (
           <div className="mt-5">
             <CultivoActual
+              key={versionCultivo}
               salaId={salaId}
               camas={camas}
               capacidadMaxima={capacidadMaxima}
+            />
+            <CierreCultivoSala
+              salaId={salaId}
+              onFinalizado={() => setVersionCultivo((v) => v + 1)}
             />
           </div>
         )}
@@ -3123,6 +3129,145 @@ export default function SalaFichaPage() {
         }
       `}</style>
     </main>
+  )
+}
+
+type CicloParaCosecha = {
+  ciclo_id: number
+  numero_ciclo: number
+  codigo_cosecha: string
+  fecha_inicio: string
+}
+
+function CierreCultivoSala({
+  salaId,
+  onFinalizado,
+}: {
+  salaId: number
+  onFinalizado: () => void
+}) {
+  const supabase = useMemo(() => createClient(), [])
+  const [cicloActivo, setCicloActivo] = useState<CicloParaCosecha | null>(null)
+  const [cargando, setCargando] = useState(true)
+  const [abierto, setAbierto] = useState(false)
+  const [fecha, setFecha] = useState(() =>
+    new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' })
+  )
+  const [observaciones, setObservaciones] = useState('')
+  const [confirmando, setConfirmando] = useState(false)
+  const [errorCierre, setErrorCierre] = useState('')
+  const [exito, setExito] = useState('')
+
+  async function consultar() {
+    setCargando(true)
+    setErrorCierre('')
+    const { data, error } = await supabase
+      .from('vista_ciclos_cultivo')
+      .select('ciclo_id,numero_ciclo,codigo_cosecha,fecha_inicio')
+      .eq('sala_id', salaId)
+      .eq('estado', 'Activo')
+      .maybeSingle()
+    setCargando(false)
+    if (error) {
+      setErrorCierre(`No se pudo consultar el ciclo activo: ${error.message}`)
+      return
+    }
+    setCicloActivo((data as CicloParaCosecha | null) ?? null)
+  }
+
+  useEffect(() => {
+    void consultar()
+  }, [salaId])
+
+  async function confirmarCosecha() {
+    if (!cicloActivo || confirmando) return
+    if (!fecha || fecha < cicloActivo.fecha_inicio) {
+      setErrorCierre('La fecha de cosecha debe ser posterior o igual al inicio del ciclo.')
+      return
+    }
+    setConfirmando(true)
+    setErrorCierre('')
+    const { error } = await supabase.rpc('finalizar_ciclo_cultivo', {
+      p_ciclo_id: cicloActivo.ciclo_id,
+      p_fecha_cierre: fecha,
+      p_observaciones_cierre: observaciones.trim() || null,
+    })
+    setConfirmando(false)
+    if (error) {
+      setErrorCierre(`No se pudo registrar la cosecha: ${error.message}`)
+      return
+    }
+    setAbierto(false)
+    setCicloActivo(null)
+    setExito(`Cosecha ${cicloActivo.codigo_cosecha} registrada. La sala ya puede iniciar otro ciclo; la producción continúa por separado.`)
+    onFinalizado()
+  }
+
+  return (
+    <section className="mt-5 rounded-3xl border border-emerald-200 bg-white p-5 shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h3 className="text-lg font-semibold text-zinc-950">Cierre del cultivo</h3>
+          <p className="mt-1 max-w-2xl text-sm leading-6 text-zinc-600">
+            El corte finaliza el ciclo y libera la sala. Los gramos se cargan después,
+            en Producción, conforme se complete cada partida.
+          </p>
+          {cicloActivo && (
+            <p className="mt-2 text-sm font-medium text-emerald-800">
+              Ciclo {cicloActivo.numero_ciclo} · {cicloActivo.codigo_cosecha}
+            </p>
+          )}
+        </div>
+        <div className="flex gap-2">
+          <button type="button" onClick={() => void consultar()}
+            disabled={cargando || confirmando}
+            className="rounded-xl border border-zinc-200 px-4 py-2 text-sm font-semibold text-zinc-700">
+            Actualizar
+          </button>
+          <button type="button" onClick={() => { setExito(''); setErrorCierre(''); setAbierto(true) }}
+            disabled={!cicloActivo || cargando || confirmando}
+            className="rounded-xl bg-emerald-700 px-5 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-zinc-300">
+            Finalizar cultivo / Registrar cosecha
+          </button>
+        </div>
+      </div>
+      {cargando && <p className="mt-3 text-sm text-zinc-500">Buscando ciclo activo...</p>}
+      {!cargando && !cicloActivo && !errorCierre && (
+        <p className="mt-3 rounded-xl bg-zinc-50 p-3 text-sm text-zinc-600">
+          No hay un ciclo activo en esta sala. Está disponible para iniciar otro cultivo.
+        </p>
+      )}
+      {exito && <p className="mt-3 rounded-xl bg-emerald-50 p-3 text-sm font-medium text-emerald-800">{exito}</p>}
+      {errorCierre && <p role="alert" className="mt-3 rounded-xl bg-red-50 p-3 text-sm text-red-700">{errorCierre}</p>}
+      {abierto && cicloActivo && (
+        <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50/40 p-5">
+          <h4 className="text-base font-bold text-zinc-950">Confirmar fin de cosecha</h4>
+          <p className="mt-1 text-sm text-zinc-600">
+            Esta operación finaliza el ciclo {cicloActivo.codigo_cosecha} y libera la sala.
+            No genera ningún lote ni agrega gramos a Stock.
+          </p>
+          <label className="mt-4 block text-sm font-semibold text-zinc-700">
+            Fecha real de corte
+            <input type="date" value={fecha} min={cicloActivo.fecha_inicio}
+              onChange={(e) => setFecha(e.target.value)}
+              className="mt-2 block w-full max-w-sm rounded-xl border border-zinc-300 bg-white px-4 py-3" />
+          </label>
+          <label className="mt-4 block text-sm font-semibold text-zinc-700">
+            Observaciones (opcional)
+            <textarea value={observaciones} onChange={(e) => setObservaciones(e.target.value)}
+              rows={2} className="mt-2 block w-full rounded-xl border border-zinc-300 bg-white px-4 py-3" />
+          </label>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button type="button" onClick={() => setAbierto(false)} disabled={confirmando}
+              className="rounded-xl border border-zinc-300 px-4 py-3 text-sm font-semibold">Cancelar</button>
+            <button type="button" onClick={() => void confirmarCosecha()} disabled={confirmando}
+              className="rounded-xl bg-emerald-700 px-5 py-3 text-sm font-semibold text-white disabled:opacity-50">
+              {confirmando ? 'Registrando...' : 'Confirmar cosecha y liberar sala'}
+            </button>
+          </div>
+        </div>
+      )}
+    </section>
   )
 }
 
